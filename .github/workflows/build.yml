@@ -37,8 +37,8 @@ jobs:
           mkdir -p dist/Payload
           cp -R build/Build/Products/Release-iphoneos/Sweep.app dist/Payload/
           cd dist
-          /usr/bin/zip -qr Sweep-0.1.0-unsigned.ipa Payload
-          shasum -a 256 Sweep-0.1.0-unsigned.ipa > SHA256.txt
+          /usr/bin/zip -qr Sweep-0.2.0-unsigned.ipa Payload
+          shasum -a 256 Sweep-0.2.0-unsigned.ipa > SHA256.txt
       - name: Smoke test navigation on iPhone simulator
         run: |
           set -o pipefail
@@ -50,9 +50,9 @@ jobs:
       - name: Upload test build
         uses: actions/upload-artifact@v4
         with:
-          name: Sweep-0.1.0-unsigned
+          name: Sweep-0.2.0-unsigned
           path: |
-            dist/Sweep-0.1.0-unsigned.ipa
+            dist/Sweep-0.2.0-unsigned.ipa
             dist/SHA256.txt
           retention-days: 14
       - name: Export simulator screenshots

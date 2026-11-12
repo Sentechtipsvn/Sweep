@@ -4,22 +4,7 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 14) {
-                    Image(systemName: "sparkles").font(.system(size: 38, weight: .medium))
-                    Text("Ảnh gọn.\nBộ nhớ thoáng.")
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                    Text("Xem rõ trước khi dọn. Mọi lựa chọn nằm trong tay Sếp.")
-                        .font(.subheadline).opacity(0.9)
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(26)
-                .background(LinearGradient(colors: [Color(red: 0.04, green: 0.43, blue: 0.29),
-                                                   Color(red: 0.12, green: 0.67, blue: 0.42)],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing),
-                            in: RoundedRectangle(cornerRadius: 30))
-
-                Text("Công cụ của Sếp").font(.title3.bold())
+                Text("Công cụ ảnh và tệp").font(.title3.bold())
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 14) {
                     NavigationLink { LibraryView(mode: .duplicates) } label: {
                         ToolCard(title: "Ảnh trùng", subtitle: "Đối chiếu dữ liệu gốc", icon: "square.on.square", color: .green)
@@ -40,7 +25,7 @@ struct HomeView: View {
                     .font(.headline)
                 Text("Sweep không có máy chủ tải ảnh lên, không cần tài khoản hay VPN. Ảnh chỉ tải từ iCloud khi Sếp cho phép hoặc chọn nhập ảnh đó.")
                     .font(.footnote).foregroundStyle(.secondary)
-                Text("BẢN THỬ NGHIỆM 0.1.0 · © Sentechtipsvn")
+                Text("BẢN THỬ NGHIỆM 0.2.0 · © Sentechtipsvn")
                     .font(.caption2.weight(.medium)).foregroundStyle(.secondary)
             }
             .padding(20)
@@ -49,6 +34,8 @@ struct HomeView: View {
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Sweep")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Image(systemName: "sparkles").foregroundStyle(.green).accessibilityHidden(true) } }
     }
 }
 
@@ -66,7 +53,8 @@ private struct ToolCard: View {
         }
         .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
         .padding(17)
-        .background(.background, in: RoundedRectangle(cornerRadius: 24))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.primary.opacity(0.08), lineWidth: 1))
     }
 }
 
@@ -76,6 +64,11 @@ struct SettingsView: View {
     @AppStorage("allowCloudScan") private var allowCloud = false
     var body: some View {
         Form {
+            Section("Trợ lý giao hàng") {
+                NavigationLink("Công đơn và QR công ty") { DeliverySettingsView() }
+                NavigationLink("Sao lưu và khôi phục sổ / ảnh") { DeliveryBackupView() }
+                Text("Sổ lưu trên thiết bị. Xóa app có thể xóa sổ; xuất bản sao ra Tệp trước khi đổi máy hoặc cài lại.").font(.footnote).foregroundStyle(.secondary)
+            }
             Section("Quét thư viện ảnh") {
                 Stepper("\(photoLimit) ảnh gần nhất", value: $photoLimit, in: 100...5000, step: 100)
                     .disabled(library.busy)
@@ -99,9 +92,9 @@ struct SettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section {
-                LabeledContent("Phiên bản", value: "0.1.0 (1) · thử nghiệm")
+                LabeledContent("Phiên bản", value: "0.2.0 (2) · thử nghiệm")
                 LabeledContent("Phát triển", value: "© Sentechtipsvn")
-                Text("Giai đoạn sau: ảnh gần giống, nén video và tiện ích ảnh chứng từ. Chưa tích hợp công cụ dọn qua pairing.")
+                Text("Sổ giao hàng hoạt động offline sau khi nhập đủ ảnh. Chia sẻ báo cáo do Sếp chọn ứng dụng và xác nhận gửi.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }

@@ -19,6 +19,7 @@
     </array>
     <key>NSPhotoLibraryUsageDescription</key><string>Sweep đọc những ảnh Sếp cho phép để tìm bản trùng, xem ảnh chụp màn hình và xóa các ảnh Sếp xác nhận.</string>
     <key>NSPhotoLibraryAddUsageDescription</key><string>Sweep lưu bản ảnh đã nén vào thư viện khi Sếp chọn Lưu ảnh.</string>
+    <key>NSCameraUsageDescription</key><string>Sweep chụp phiếu đơn hàng, phiếu khách ký hoặc ảnh giao dịch khi Sếp chọn Chụp.</string>
     <key>CFBundleLocalizations</key><array><string>vi</string></array>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict></plist>

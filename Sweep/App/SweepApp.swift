@@ -3,17 +3,28 @@ import SwiftUI
 @main
 struct SweepApp: App {
     @StateObject private var library = PhotoStore()
+    @StateObject private var delivery = DeliveryStore()
     var body: some Scene {
         WindowGroup {
             TabView {
+                OrdersView().tabItem { Label("Đơn hàng", systemImage: "shippingbox") }
+                NavigationStack { ReconciliationView() }
+                    .tabItem { Label("Đối soát", systemImage: "checklist") }
                 NavigationStack { HomeView() }
-                    .tabItem { Label("Sweep", systemImage: "sparkles") }
+                    .tabItem { Label("Công cụ", systemImage: "sparkles") }
                 NavigationStack { SettingsView() }
                     .tabItem { Label("Cài đặt", systemImage: "gearshape") }
             }
             .tint(.green)
             .environmentObject(library)
-            .task { if library.canRead { library.reload() } }
+            .environmentObject(delivery)
+            .background(DeliveryFeedback(store: delivery).frame(width: 0, height: 0))
+            .task {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--seed-delivery") { delivery.installUITestFixture() }
+                #endif
+                if library.canRead { library.reload() }
+            }
         }
     }
 }
