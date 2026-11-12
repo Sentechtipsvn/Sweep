@@ -1,0 +1,79 @@
+name: Build Sweep IPA
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sweep-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+      - name: Test duplicate rules, path containment and image encoding
+        run: swift test
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build device app without signing
+        run: |
+          set -o pipefail
+          xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build.log
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/Sweep.app dist/Payload/
+          cd dist
+          /usr/bin/zip -qr Sweep-0.1.0-unsigned.ipa Payload
+          shasum -a 256 Sweep-0.1.0-unsigned.ipa > SHA256.txt
+      - name: Smoke test navigation on iPhone simulator
+        run: |
+          set -o pipefail
+          SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,items in d["devices"].items() if "iOS-18-5" in runtime for x in items if x["name"] == "iPhone 16"))')
+          xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build-simulator \
+            -resultBundlePath build-ui.xcresult CODE_SIGNING_ALLOWED=NO \
+            test | tee simulator-test.log
+      - name: Upload test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-0.1.0-unsigned
+          path: |
+            dist/Sweep-0.1.0-unsigned.ipa
+            dist/SHA256.txt
+          retention-days: 14
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          if [ -d build-ui.xcresult ]; then
+            xcrun xcresulttool export attachments --path build-ui.xcresult --output-path ui-screenshots || true
+          fi
+      - name: Upload simulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-simulator-evidence
+          path: |
+            ui-screenshots/
+            simulator-test.log
+          if-no-files-found: ignore
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-build-log
+          path: build.log
+          if-no-files-found: ignore
