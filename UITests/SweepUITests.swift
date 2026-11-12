@@ -30,16 +30,22 @@ final class SweepUITests: XCTestCase {
         let order = app.buttons["order.TEST-001"]
         XCTAssertTrue(order.waitForExistence(timeout: 15)); order.tap()
         reveal(app.buttons["order.sign"], in: app); app.buttons["order.sign"].tap()
-        app.switches["sign.confirm"].tap(); app.buttons["sign.save"].tap()
-        XCTAssertTrue(app.buttons["order.settle"].waitForExistence(timeout: 5)); app.buttons["order.settle"].tap()
+        app.switches["sign.confirm"].tap()
+        XCTAssertTrue(app.buttons["sign.save"].isEnabled)
+        app.buttons["sign.save"].tap()
+        waitUntil(app.buttons["sign.save"], in: app) { !$0.exists }
+        attach(app, name: "05-signed-assignment")
+        waitUntil(app.buttons["order.settle"], in: app) { $0.exists && $0.isHittable }
+        app.buttons["order.settle"].tap()
         app.buttons["settle.outcome"].tap()
         app.buttons["Giao thất bại"].firstMatch.tap()
         app.buttons["settle.mode"].tap()
         app.buttons["CK + tiền mặt"].firstMatch.tap()
         replace(app.textFields["settle.cash"], with: "600000")
         replace(app.textFields["settle.bank"], with: "1500000")
-        reveal(app.textFields["Nội dung"], in: app)
-        app.textFields["Nội dung"].tap(); app.textFields["Nội dung"].typeText("Hen giao lai, da nhan mot phan")
+        let note = app.descendants(matching: .any).matching(identifier: "settle.note").firstMatch
+        reveal(note, in: app)
+        note.tap(); note.typeText("Hen giao lai, da nhan mot phan")
         reveal(app.buttons["settle.save"], in: app); app.buttons["settle.save"].tap()
         XCTAssertTrue(app.buttons["order.settle"].waitForExistence(timeout: 5))
         reveal(app.buttons["order.report"], in: app); app.buttons["order.report"].tap()
@@ -71,6 +77,13 @@ final class SweepUITests: XCTestCase {
         field.tap()
         let count = (field.value as? String)?.count ?? 1
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count + 2) + value)
+    }
+
+    private func waitUntil(_ element: XCUIElement, in app: XCUIApplication, condition: @escaping (XCUIElement) -> Bool) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition(element) }, object: nil)
+        let result = XCTWaiter.wait(for: [ready], timeout: 8)
+        if result != .completed { attach(app, name: "failure-navigation"); print(app.debugDescription) }
+        XCTAssertEqual(result, .completed)
     }
 
     private func attach(_ app: XCUIApplication, name: String) {

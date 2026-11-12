@@ -17,107 +17,110 @@ struct OrderDetailView: View {
     var body: some View {
         Group {
             if let order {
-                List {
-                    Section {
-                        Text(order.customer).font(.title2.bold()).textSelection(.enabled)
-                        LabeledContent("Tổng đơn", value: VND.format(order.total)).font(.headline)
-                        LabeledContent("Mã phiếu", value: order.code).textSelection(.enabled)
-                        if let date = order.invoiceAt { LabeledContent("Ngày hóa đơn", value: date.formatted(date: .numeric, time: .omitted)) }
-                        if let invoice = order.activeEvidence.first(where: { $0.role == .invoice }) {
-                            Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 200) }.buttonStyle(.plain)
-                        }
-                        HStack {
-                            if let url = phoneURL(order.phone) { Link(destination: url) { Label("Gọi", systemImage: "phone") } }
-                            if !order.address.isEmpty, let url = mapURL(order.address) {
-                                Link(destination: url) { Label("Đường", systemImage: "map") }
+                VStack(spacing: 0) {
+                    List {
+                        Section {
+                            Text(order.customer).font(.title2.bold()).textSelection(.enabled)
+                            LabeledContent("Tổng đơn", value: VND.format(order.total)).font(.headline)
+                            LabeledContent("Mã phiếu", value: order.code).textSelection(.enabled)
+                            if let date = order.invoiceAt { LabeledContent("Ngày hóa đơn", value: date.formatted(date: .numeric, time: .omitted)) }
+                            if let invoice = order.activeEvidence.first(where: { $0.role == .invoice }) {
+                                Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 200) }.buttonStyle(.plain)
                             }
-                            NavigationLink { BankCompanyView() } label: { Label("QR công ty", systemImage: "qrcode") }
-                        }.font(.subheadline).buttonStyle(.bordered)
-                        if !order.phone.isEmpty { Text(order.phone).font(.caption).textSelection(.enabled) }
-                        if !order.address.isEmpty { Text(order.address).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
-                    }
-                    Section("Ký nhận và công đơn") {
-                        if let assignment = order.assignments.first {
-                            LabeledContent(order.activeAssignments.isEmpty ? "Đã điều chỉnh hủy công" : "Công đã ghi nhận", value: VND.format(assignment.fee))
-                            LabeledContent("Ngày Sếp ký nhận", value: assignment.signedAt.formatted(date: .numeric, time: .shortened))
-                        } else {
-                            Text("Chưa xác nhận ký nhận · chưa tính công").foregroundStyle(.secondary)
-                            Button("Xác nhận Sếp đã ký nhận phiếu") { sign = true }.accessibilityIdentifier("order.sign")
+                            HStack {
+                                if let url = phoneURL(order.phone) { Link(destination: url) { Label("Gọi", systemImage: "phone") } }
+                                if !order.address.isEmpty, let url = mapURL(order.address) {
+                                    Link(destination: url) { Label("Đường", systemImage: "map") }
+                                }
+                                NavigationLink { BankCompanyView() } label: { Label("QR công ty", systemImage: "qrcode") }
+                            }.font(.subheadline).buttonStyle(.bordered)
+                            if !order.phone.isEmpty { Text(order.phone).font(.caption).textSelection(.enabled) }
+                            if !order.address.isEmpty { Text(order.address).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                         }
-                        Text("Chữ ký khách là chứng từ giao hàng. Thêm ảnh hay báo cáo lại không cộng thêm công.").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Section("Giao và tiền") {
-                        LabeledContent("Kết quả", value: order.outcome.rawValue)
-                        LabeledContent("Tiền mặt đã thu", value: VND.format(order.cash))
-                        LabeledContent("CK khách báo", value: VND.format(order.bank))
-                        LabeledContent("CK đã đối soát", value: VND.format(order.verifiedBank))
-                        LabeledContent("Còn lại theo ghi nhận", value: VND.format(order.remaining)).foregroundStyle(order.remaining > 0 ? .orange : .primary)
-                        if let value = order.settlement {
-                            Text(value.at.formatted(date: .numeric, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                            if !value.note.isEmpty { Text(value.note).font(.footnote) }
+                        Section("Ký nhận và công đơn") {
+                            if let assignment = order.assignments.first {
+                                LabeledContent(order.activeAssignments.isEmpty ? "Đã điều chỉnh hủy công" : "Công đã ghi nhận", value: VND.format(assignment.fee))
+                                LabeledContent("Ngày Sếp ký nhận", value: assignment.signedAt.formatted(date: .numeric, time: .shortened))
+                            } else {
+                                Text("Chưa xác nhận ký nhận · chưa tính công").foregroundStyle(.secondary)
+                                Button("Xác nhận Sếp đã ký nhận phiếu") { sign = true }.accessibilityIdentifier("order.sign")
+                            }
+                            Text("Chữ ký khách là chứng từ giao hàng. Thêm ảnh hay báo cáo lại không cộng thêm công.").font(.caption).foregroundStyle(.secondary)
                         }
-                        if order.bank > order.verifiedBank { Button("Xác nhận CK đã vào công ty…") { reason = ""; bank = true } }
-                    }
-                    ForEach([EvidenceRole.invoice, .signature, .transfer], id: \.self) { role in
-                        Section(role.rawValue) {
-                            let files = order.activeEvidence.filter { $0.role == role }
-                            if !files.isEmpty {
-                                ScrollView(.horizontal) {
-                                    HStack {
-                                        ForEach(files) { file in
-                                            Button { preview = store.url(file) } label: { EvidenceThumbnail(url: store.url(file), height: 100).frame(width: 100) }.buttonStyle(.plain)
-                                                .contextMenu {
-                                                    Button("Loại khỏi bộ báo cáo…", role: .destructive) { excludedFile = file.id; reason = ""; excluding = true }
-                                                }
+                        Section("Giao và tiền") {
+                            LabeledContent("Kết quả", value: order.outcome.rawValue)
+                            LabeledContent("Tiền mặt đã thu", value: VND.format(order.cash))
+                            LabeledContent("CK khách báo", value: VND.format(order.bank))
+                            LabeledContent("CK đã đối soát", value: VND.format(order.verifiedBank))
+                            LabeledContent("Còn lại theo ghi nhận", value: VND.format(order.remaining)).foregroundStyle(order.remaining > 0 ? .orange : .primary)
+                            if let value = order.settlement {
+                                Text(value.at.formatted(date: .numeric, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                                if !value.note.isEmpty { Text(value.note).font(.footnote) }
+                            }
+                            if order.bank > order.verifiedBank { Button("Xác nhận CK đã vào công ty…") { reason = ""; bank = true } }
+                        }
+                        ForEach([EvidenceRole.invoice, .signature, .transfer], id: \.self) { role in
+                            Section(role.rawValue) {
+                                let files = order.activeEvidence.filter { $0.role == role }
+                                if !files.isEmpty {
+                                    ScrollView(.horizontal) {
+                                        HStack {
+                                            ForEach(files) { file in
+                                                Button { preview = store.url(file) } label: { EvidenceThumbnail(url: store.url(file), height: 100).frame(width: 100) }.buttonStyle(.plain)
+                                                    .contextMenu {
+                                                        Button("Loại khỏi bộ báo cáo…", role: .destructive) { excludedFile = file.id; reason = ""; excluding = true }
+                                                    }
+                                            }
                                         }
                                     }
                                 }
+                                if order.voidReason == nil { EvidencePicker(title: "Bổ sung \(role.rawValue.lowercased())") { url in await store.attach(url, role: role, to: id) } }
                             }
-                            if order.voidReason == nil { EvidencePicker(title: "Bổ sung \(role.rawValue.lowercased())") { url in await store.attach(url, role: role, to: id) } }
                         }
-                    }
-                    Section("Báo cáo") {
-                        Label(order.reportSent ? "Sếp đã xác nhận gửi" : order.reports.isEmpty ? "Chưa chuẩn bị báo cáo" : "Chưa xác nhận gửi / cần gửi lại", systemImage: order.reportSent ? "checkmark.circle.fill" : "paperplane")
-                            .foregroundStyle(order.reportSent ? .green : .secondary)
-                        NavigationLink { OrderReportView(id: id) } label: { Label("Chuẩn bị và chia sẻ báo cáo", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("order.report")
-                    }
-                    if !order.reviewNote.isEmpty {
-                        Section("Dữ liệu cũ cần rà soát") {
-                            Text(order.reviewNote).font(.footnote).textSelection(.enabled)
-                            Button("Đánh dấu đã rà soát dữ liệu cũ") {
-                                _ = store.change { ledger in
-                                    guard let i = ledger.orders.firstIndex(where: { $0.id == id }) else { return }
-                                    let previous = ledger.orders[i].reviewNote
-                                    ledger.orders[i].reviewNote = ""
-                                    ledger.record("Sếp xác nhận đã rà soát sổ cũ", orderID: id, previous)
+                        Section("Báo cáo") {
+                            Label(order.reportSent ? "Sếp đã xác nhận gửi" : order.reports.isEmpty ? "Chưa chuẩn bị báo cáo" : "Chưa xác nhận gửi / cần gửi lại", systemImage: order.reportSent ? "checkmark.circle.fill" : "paperplane")
+                                .foregroundStyle(order.reportSent ? .green : .secondary)
+                            NavigationLink { OrderReportView(id: id) } label: { Label("Chuẩn bị và chia sẻ báo cáo", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("order.report")
+                        }
+                        if !order.reviewNote.isEmpty {
+                            Section("Dữ liệu cũ cần rà soát") {
+                                Text(order.reviewNote).font(.footnote).textSelection(.enabled)
+                                Button("Đánh dấu đã rà soát dữ liệu cũ") {
+                                    _ = store.change { ledger in
+                                        guard let i = ledger.orders.firstIndex(where: { $0.id == id }) else { return }
+                                        let previous = ledger.orders[i].reviewNote
+                                        ledger.orders[i].reviewNote = ""
+                                        ledger.record("Sếp xác nhận đã rà soát sổ cũ", orderID: id, previous)
+                                    }
+                                }
+                                Text("Thao tác này chỉ bỏ cờ nhắc, không tự xác nhận ngày ký, ghi công, đối soát CK hoặc gửi báo cáo.").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        if !order.note.isEmpty { Section("Ghi chú hồ sơ") { Text(order.note) } }
+                        Section {
+                            if !order.exclusions.isEmpty {
+                                NavigationLink("Ảnh gốc đã loại khỏi báo cáo (\(order.exclusions.count))") {
+                                    List(order.evidence.filter { file in order.exclusions.contains { $0.evidenceID == file.id } }) { file in
+                                        Button { preview = store.url(file) } label: {
+                                            VStack(alignment: .leading) {
+                                                EvidenceThumbnail(url: store.url(file), height: 180)
+                                                Text(order.exclusions.first(where: { $0.evidenceID == file.id })?.reason ?? "").font(.caption)
+                                            }
+                                        }.buttonStyle(.plain)
+                                    }.navigationTitle("Ảnh lưu trong lịch sử").quickLookPreview($preview)
                                 }
                             }
-                            Text("Thao tác này chỉ bỏ cờ nhắc, không tự xác nhận ngày ký, ghi công, đối soát CK hoặc gửi báo cáo.").font(.caption).foregroundStyle(.secondary)
+                            NavigationLink("Lịch sử hồ sơ") { OrderHistoryView(id: id) }
+                            if order.voidReason == nil { Button("Hủy hồ sơ nhập nhầm…", role: .destructive) { reason = ""; void = true } }
+                            else { Text("Đã hủy: \(order.voidReason ?? "")").foregroundStyle(.secondary) }
                         }
                     }
-                    if !order.note.isEmpty { Section("Ghi chú hồ sơ") { Text(order.note) } }
-                    Section {
-                        if !order.exclusions.isEmpty {
-                            NavigationLink("Ảnh gốc đã loại khỏi báo cáo (\(order.exclusions.count))") {
-                                List(order.evidence.filter { file in order.exclusions.contains { $0.evidenceID == file.id } }) { file in
-                                    Button { preview = store.url(file) } label: {
-                                        VStack(alignment: .leading) {
-                                            EvidenceThumbnail(url: store.url(file), height: 180)
-                                            Text(order.exclusions.first(where: { $0.evidenceID == file.id })?.reason ?? "").font(.caption)
-                                        }
-                                    }.buttonStyle(.plain)
-                                }.navigationTitle("Ảnh lưu trong lịch sử").quickLookPreview($preview)
-                            }
-                        }
-                        NavigationLink("Lịch sử hồ sơ") { OrderHistoryView(id: id) }
-                        if order.voidReason == nil { Button("Hủy hồ sơ nhập nhầm…", role: .destructive) { reason = ""; void = true } }
-                        else { Text("Đã hủy: \(order.voidReason ?? "")").foregroundStyle(.secondary) }
-                    }
-                }
-                .safeAreaInset(edge: .bottom) {
                     if order.voidReason == nil {
-                        Button { settle = true } label: { Label("Chốt giao / thu tiền", systemImage: "checkmark.circle").frame(maxWidth: .infinity).padding(.vertical, 6) }
-                            .buttonStyle(.borderedProminent).padding(12).background(.bar).accessibilityIdentifier("order.settle")
+                        Button { settle = true } label: {
+                            Label("Chốt giao / thu tiền", systemImage: "checkmark.circle")
+                                .font(.headline).frame(maxWidth: .infinity, minHeight: 36)
+                        }
+                        .buttonStyle(.borderedProminent).padding(12).background(.bar).accessibilityIdentifier("order.settle")
                     }
                 }
                 .sheet(isPresented: $settle) { SettlementView(order: order) }
@@ -252,7 +255,7 @@ struct SettlementView: View {
                     Button("CK sau, chưa nhận khoản nào") { cash = "0"; bank = "0"; mode = .deferred }
                     Text("Sửa là thay tổng khoản đã ghi của đơn, không cộng thêm lần nữa. Đổi số liệu làm báo cáo cần gửi lại; CK cần đối soát lại. Công ký nhận được giữ nguyên.").font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Ghi chú / lý do hoãn, thất bại") { TextField("Nội dung", text: $note, axis: .vertical).lineLimit(3...6) }
+                Section("Ghi chú / lý do hoãn, thất bại") { TextField("Nội dung", text: $note, axis: .vertical).lineLimit(3...6).accessibilityIdentifier("settle.note") }
                 Section {
                     Button("Lưu chốt giao / tiền") {
                         do {
