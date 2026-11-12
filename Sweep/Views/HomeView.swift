@@ -33,9 +33,12 @@ struct HomeView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Sweep")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Image(systemName: "sparkles").foregroundStyle(.green).accessibilityHidden(true) } }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { Text("Sweep").font(.title2.bold()).accessibilityAddTraits(.isHeader) }
+            ToolbarItem(placement: .topBarTrailing) { Image(systemName: "sparkles").foregroundStyle(.green).accessibilityHidden(true) }
+        }
     }
 }
 

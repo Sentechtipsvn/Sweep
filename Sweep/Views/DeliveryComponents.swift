@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 import QuickLook
+import ImageIO
 
 struct EvidenceThumbnail: View {
     let url: URL
@@ -14,7 +15,16 @@ struct EvidenceThumbnail: View {
         }
         .frame(maxWidth: .infinity).frame(height: height)
         .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14))
-        .task(id: url) { image = await Task.detached(priority: .utility) { CompressionStore.preview(url) }.value }
+        .task(id: url) {
+            let pixels = max(160, min(1200, Int(height * 3)))
+            image = await Task.detached(priority: .utility) { Self.thumbnail(url, pixels: pixels) }.value
+        }
+    }
+    nonisolated private static func thumbnail(_ url: URL, pixels: Int) -> UIImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: pixels] as CFDictionary) else { return nil }
+        return UIImage(cgImage: image)
     }
 }
 

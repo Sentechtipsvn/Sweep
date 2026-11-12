@@ -36,8 +36,10 @@ Sửa lần chốt tạo bản ghi mới, giữ lịch sử cũ; cần kiểm tr
 ## Chứng từ và báo cáo
 
 - Bổ sung nhiều ảnh theo vai trò: phiếu nội bộ / phiếu khách ký / ảnh giao dịch. Chạm ảnh để xem đầy đủ. Ảnh đã nhập được giữ riêng, không phụ thuộc ảnh gốc còn trong Photos.
+- Chọn nhầm ảnh: nhấn giữ ảnh → Loại khỏi bộ báo cáo, ghi lý do rồi thêm ảnh đúng. Ảnh cũ và bộ báo cáo trước được giữ trong lịch sử, không thêm công đơn.
 - Mở **Chuẩn bị và chia sẻ báo cáo**, kiểm nội dung và thứ tự ảnh, bấm kiểm tra/chuẩn bị.
 - Thiếu ảnh bắt buộc vẫn giữ được chốt tiền, nhưng chưa chuẩn bị báo cáo hoàn chỉnh.
+- Có nút Lưu nội dung nháp để giữ phần đang soạn khi chưa đủ ảnh; lưu nháp không xác nhận đã gửi.
 - Chia sẻ nội dung + ảnh bằng iOS; chọn nhóm Zalo thủ công. Nếu ứng dụng đích bỏ nội dung, dùng **Sao chép nội dung** và **Chỉ chia sẻ bộ ảnh**.
 - Quay lại bấm **Tôi đã gửi báo cáo…** sau khi thực sự gửi đủ. Mở/đóng bảng chia sẻ không tự xác nhận gửi.
 - Zalo trên máy thật cần được thử riêng; kiểm thử simulator không chứng minh tin được gửi vào nhóm.

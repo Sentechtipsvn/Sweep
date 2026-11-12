@@ -43,6 +43,12 @@ struct DeliveryEvidence: Codable, Identifiable, Equatable {
     var bytes: Int64
     var addedAt = Date()
 }
+struct EvidenceExclusion: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var evidenceID: UUID
+    var reason: String
+    var at = Date()
+}
 struct SignedAssignment: Codable, Identifiable, Equatable {
     var id = UUID()
     var signedAt: Date
@@ -95,6 +101,12 @@ struct DeliveryReport: Codable, Identifiable, Equatable {
     var evidenceIDs: [UUID]
     var preparedAt = Date()
 }
+struct DeliveryReportDraft: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var revision: Int
+    var text: String
+    var at = Date()
+}
 struct ReportAcknowledgement: Codable, Identifiable, Equatable {
     var id = UUID()
     var reportID: UUID
@@ -116,13 +128,19 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var note = ""
     var revision = 1
     var evidence: [DeliveryEvidence] = []
+    var exclusions: [EvidenceExclusion] = []
     var assignments: [SignedAssignment] = []
     var reversals: [CommissionReversal] = []
     var settlements: [Settlement] = []
     var bankChecks: [BankVerification] = []
     var reports: [DeliveryReport] = []
+    var reportDrafts: [DeliveryReportDraft] = []
     var reportAcks: [ReportAcknowledgement] = []
     var voidReason: String?
+    var activeEvidence: [DeliveryEvidence] {
+        let excluded = Set(exclusions.map(\.evidenceID))
+        return evidence.filter { !excluded.contains($0.id) }
+    }
     var settlement: Settlement? { settlements.last }
     var outcome: DeliveryOutcome { settlement?.outcome ?? .pending }
     var cash: Int64 { settlement?.cash ?? 0 }
@@ -142,7 +160,7 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
         var needed: [EvidenceRole] = [.invoice]
         if settlement?.mode == .deferred || settlement?.mode == .mixed { needed.append(.signature) }
         if bank > 0 { needed.append(.transfer) }
-        return needed.filter { role in !evidence.contains { $0.role == role } }
+        return needed.filter { role in !activeEvidence.contains { $0.role == role } }
     }
     func reportText() -> String {
         var rows = [customer, "Mã phiếu: \(code)", "Kết quả: \(outcome.rawValue)", "Tổng đơn: \(VND.format(total))",
@@ -151,7 +169,7 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
         if bank > 0 { rows.append("CK đã đối soát công ty: \(VND.format(verifiedBank))") }
         if settlement?.mode == .deferred { rows.append("Khách hẹn chuyển khoản sau, chưa ghi nhận tiền chuyển.") }
         if let text = settlement?.note, !text.isEmpty { rows.append("Ghi chú: \(text)") }
-        let roles = [EvidenceRole.invoice, .signature, .transfer].filter { role in evidence.contains { $0.role == role } }
+        let roles = [EvidenceRole.invoice, .signature, .transfer].filter { role in activeEvidence.contains { $0.role == role } }
         if !roles.isEmpty { rows.append("Đính kèm: " + roles.map(\.rawValue).joined(separator: ", ") + ".") }
         return rows.joined(separator: "\n")
     }
@@ -214,7 +232,7 @@ struct DeliveryLedger: Codable, Equatable {
     mutating func sign(_ id: UUID, at date: Date) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].voidReason == nil else { throw DeliveryError.invalid("Không tìm thấy hồ sơ hợp lệ.") }
         guard orders[i].assignments.isEmpty else { return } // A reversed assignment cannot be silently recreated.
-        guard orders[i].evidence.contains(where: { $0.role == .invoice }) else { throw DeliveryError.invalid("Lưu phiếu nội bộ trước khi xác nhận ký nhận.") }
+        guard orders[i].activeEvidence.contains(where: { $0.role == .invoice }) else { throw DeliveryError.invalid("Lưu phiếu nội bộ trước khi xác nhận ký nhận.") }
         guard date <= Date().addingTimeInterval(60) else { throw DeliveryError.invalid("Ngày ký nhận không được ở tương lai.") }
         orders[i].assignments.append(SignedAssignment(signedAt: date, fee: settings.fee))
         record("Ký nhận đi giao", orderID: id, "Ngày \(date.ISO8601Format()) · công \(settings.fee)")
@@ -245,11 +263,19 @@ struct DeliveryLedger: Codable, Equatable {
         }
         guard orders[i].missingEvidence().isEmpty else { throw DeliveryError.invalid("Thiếu: " + orders[i].missingEvidence().map(\.rawValue).joined(separator: ", ")) }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nội dung báo cáo đang trống.") }
-        let evidence = [EvidenceRole.invoice, .signature, .transfer].flatMap { role in orders[i].evidence.filter { $0.role == role }.map(\.id) }
+        let evidence = [EvidenceRole.invoice, .signature, .transfer].flatMap { role in orders[i].activeEvidence.filter { $0.role == role }.map(\.id) }
         if let previous = orders[i].reports.last, previous.revision == orders[i].revision, previous.text == text, previous.evidenceIDs == evidence { return previous }
         let report = DeliveryReport(revision: orders[i].revision, text: text, evidenceIDs: evidence)
         orders[i].reports.append(report); record("Chuẩn bị báo cáo", orderID: id, report.id.uuidString)
         return report
+    }
+    mutating func saveReportDraft(_ id: UUID, text: String) throws {
+        guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].voidReason == nil,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nội dung nháp đang trống hoặc hồ sơ không hợp lệ.") }
+        if let draft = orders[i].reportDrafts.last, draft.text == text, draft.revision == orders[i].revision { return }
+        if let report = orders[i].reports.last, report.text != text, report.revision == orders[i].revision { orders[i].revision += 1 }
+        orders[i].reportDrafts.append(DeliveryReportDraft(revision: orders[i].revision, text: text))
+        record("Lưu nội dung báo cáo nháp", orderID: id, text)
     }
     mutating func acknowledgeReport(_ id: UUID, reportID: UUID) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), let report = orders[i].reports.last,
@@ -257,6 +283,13 @@ struct DeliveryLedger: Codable, Equatable {
         guard !orders[i].reportAcks.contains(where: { $0.reportID == reportID }) else { return }
         orders[i].reportAcks.append(ReportAcknowledgement(reportID: reportID))
         record("Sếp xác nhận đã gửi", orderID: id, reportID.uuidString)
+    }
+    mutating func excludeEvidence(_ evidenceID: UUID, orderID: UUID, reason: String) throws {
+        guard let i = orders.firstIndex(where: { $0.id == orderID }), orders[i].evidence.contains(where: { $0.id == evidenceID }),
+              !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Chọn ảnh và ghi lý do loại khỏi bộ báo cáo.") }
+        guard !orders[i].exclusions.contains(where: { $0.evidenceID == evidenceID }) else { return }
+        orders[i].exclusions.append(EvidenceExclusion(evidenceID: evidenceID, reason: reason)); orders[i].revision += 1
+        record("Loại ảnh khỏi báo cáo, giữ bản gốc", orderID: orderID, "\(evidenceID) · \(reason)")
     }
     mutating func handover(_ amount: Int64, at: Date, note: String) throws {
         try VND.check(amount)
@@ -312,6 +345,8 @@ struct DeliveryLedger: Codable, Equatable {
                 guard order.settlements.contains(where: { $0.id == check.settlementID && $0.bank == check.amount }), check.amount > 0 else { throw DeliveryError.invalid("Đối soát CK không khớp khoản thu.") }
             }
             for report in order.reports where !Set(report.evidenceIDs).isSubset(of: Set(order.evidence.map(\.id))) { throw DeliveryError.invalid("Báo cáo thiếu ảnh nguồn.") }
+            guard Set(order.exclusions.map(\.evidenceID)).count == order.exclusions.count else { throw DeliveryError.invalid("Trùng sự kiện loại ảnh.") }
+            for exclusion in order.exclusions where !order.evidence.contains(where: { $0.id == exclusion.evidenceID }) { throw DeliveryError.invalid("Loại ảnh thiếu bản gốc.") }
             for ack in order.reportAcks where !order.reports.contains(where: { $0.id == ack.reportID }) { throw DeliveryError.invalid("Xác nhận gửi thiếu báo cáo gốc.") }
         }
         for value in handovers { try VND.check(value.amount); guard value.amount > 0 else { throw DeliveryError.invalid("Lần nộp tiền không hợp lệ.") } }
@@ -321,6 +356,8 @@ struct DeliveryLedger: Codable, Equatable {
         for order in orders {
             ids += order.assignments.map(\.id) + order.reversals.map(\.id) + order.settlements.map(\.id)
             ids += order.bankChecks.map(\.id) + order.reports.map(\.id) + order.reportAcks.map(\.id)
+            ids += order.exclusions.map(\.id)
+            ids += order.reportDrafts.map(\.id)
         }
         guard Set(ids).count == ids.count else { throw DeliveryError.invalid("Trùng ID sự kiện trong sổ.") }
         guard cashHeld >= 0, Set(allEvidence.map(\.id)).count == allEvidence.count,
@@ -340,7 +377,9 @@ struct DeliveryLedger: Codable, Equatable {
             guard let new = indexed[old.id], old.sourceID == new.sourceID, old.sourceSnapshot == new.sourceSnapshot,
                   old.sourceCreatedAt == new.sourceCreatedAt, new.revision >= old.revision,
                   keeps(old.evidence, new.evidence), keeps(old.assignments, new.assignments), keeps(old.reversals, new.reversals),
+                  keeps(old.exclusions, new.exclusions),
                   keeps(old.settlements, new.settlements), keeps(old.bankChecks, new.bankChecks), keeps(old.reports, new.reports), keeps(old.reportAcks, new.reportAcks),
+                  keeps(old.reportDrafts, new.reportDrafts),
                   old.voidReason == nil || old.voidReason == new.voidReason else { throw DeliveryError.invalid("Lịch sử hồ sơ phải được giữ nguyên; dùng bản ghi điều chỉnh.") }
         }
     }

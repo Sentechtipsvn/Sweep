@@ -51,6 +51,7 @@ final class DeliveryDatabase {
     func save(_ ledger: DeliveryLedger, replacing: Bool = false) throws {
         try ledger.validate()
         let data = try DeliveryCoding.encode(ledger)
+        guard data.count <= 32 * 1024 * 1024 else { throw DeliveryError.invalid("Sổ vượt giới hạn 32 MB dữ liệu mô tả. Ảnh được lưu riêng; giữ sổ hiện tại và xuất sao lưu trước khi nâng phiên bản.") }
         try execute("BEGIN IMMEDIATE")
         do {
             if !replacing { try ledger.validateAppendOnly(from: load()) }

@@ -113,9 +113,27 @@ final class DeliveryTests: XCTestCase {
     func testDeferredPaymentRequiresSignatureButDoesNotInventBankMoney() throws {
         var ledger = DeliveryLedger(); let id = try ledger.insert(invoiceOrder())
         try ledger.settle(id, value: payment(.deferred, cash: 0, bank: 0))
+        try ledger.saveReportDraft(id, text: "Khách hẹn chuyển sau, đang chờ ảnh ký")
+        XCTAssertEqual(ledger.orders[0].reportDrafts.last?.text, "Khách hẹn chuyển sau, đang chờ ảnh ký")
+        XCTAssertTrue(ledger.orders[0].reports.isEmpty)
         XCTAssertEqual(ledger.orders[0].missingEvidence(), [.signature])
         XCTAssertEqual(ledger.bankPending, 0); XCTAssertEqual(ledger.orders[0].remaining, 2_165_000)
         XCTAssertFalse(ledger.orders[0].reportText().contains("Ảnh giao dịch"))
+    }
+    func testReplacingWrongEvidenceKeepsOldReportAndNeverAddsCommission() throws {
+        var ledger = DeliveryLedger(); let id = try ledger.insert(invoiceOrder())
+        try ledger.sign(id, at: Date()); try ledger.settle(id, value: payment(.bank, cash: 0, bank: 2_165_000))
+        let wrong = file(.transfer); ledger.orders[0].evidence.append(wrong)
+        let old = try ledger.prepareReport(id, text: ledger.orders[0].reportText())
+        try ledger.acknowledgeReport(id, reportID: old.id)
+        try ledger.excludeEvidence(wrong.id, orderID: id, reason: "Chọn nhầm giao dịch")
+        XCTAssertFalse(ledger.orders[0].reportSent); XCTAssertEqual(ledger.orders[0].missingEvidence(), [.transfer])
+        XCTAssertThrowsError(try ledger.prepareReport(id, text: "Thiếu ảnh"))
+        let replacement = file(.transfer); ledger.orders[0].evidence.append(replacement)
+        let updated = try ledger.prepareReport(id, text: ledger.orders[0].reportText())
+        XCTAssertFalse(updated.evidenceIDs.contains(wrong.id)); XCTAssertTrue(updated.evidenceIDs.contains(replacement.id))
+        XCTAssertTrue(ledger.orders[0].reports[0].evidenceIDs.contains(wrong.id))
+        XCTAssertEqual(ledger.orders[0].activeAssignments.count, 1); try ledger.validate()
     }
     func testVoidPreservesCommissionAndMoneyAuditInsteadOfDeleting() throws {
         var ledger = DeliveryLedger(); let id = try ledger.insert(invoiceOrder())

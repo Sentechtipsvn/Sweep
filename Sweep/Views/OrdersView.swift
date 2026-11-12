@@ -53,8 +53,8 @@ struct OrdersView: View {
             .navigationTitle("Đơn hàng")
             .searchable(text: $query, prompt: "Tên khách, mã phiếu, số điện thoại")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button { bill = true } label: { Label("Nhập Bill", systemImage: "tray.and.arrow.down") }.accessibilityIdentifier("orders.bill") }
-                ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new") }
+                ToolbarItem(placement: .topBarLeading) { Button { bill = true } label: { Label("Nhập Bill", systemImage: "tray.and.arrow.down") }.accessibilityIdentifier("orders.bill").disabled(store.busy || store.blocked) }
+                ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) }
             }
             .navigationDestination(for: UUID.self) { OrderDetailView(id: $0) }
             .sheet(isPresented: $newOrder) { OrderIntakeView { id in newOrder = false; path.append(id) } }

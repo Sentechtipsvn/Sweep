@@ -29,6 +29,7 @@ final class DeliveryStore: ObservableObject {
     func url(_ evidence: DeliveryEvidence) -> URL { evidenceDirectory.appendingPathComponent(evidence.filename) }
     @discardableResult func change(_ operation: (inout DeliveryLedger) throws -> Void) -> Bool {
         guard !blocked, let database else { return false }
+        guard !busy else { message = "Sổ đang xử lý ảnh hoặc sao lưu. Chờ hoàn tất rồi lưu thay đổi."; return false }
         do {
             var next = ledger; try operation(&next)
             try database.save(next); ledger = next; return true
@@ -71,7 +72,7 @@ final class DeliveryStore: ObservableObject {
             var next = ledger
             if let id {
                 guard let i = next.orders.firstIndex(where: { $0.id == id }), next.orders[i].voidReason == nil else { throw DeliveryError.invalid("Hồ sơ không hợp lệ.") }
-                if next.orders[i].evidence.contains(where: { $0.role == role && $0.sha256 == imported.sha256 }) {
+                if next.orders[i].activeEvidence.contains(where: { $0.role == role && $0.sha256 == imported.sha256 }) {
                     try? FileManager.default.removeItem(at: url(imported)); return
                 }
                 next.orders[i].evidence.append(imported); next.orders[i].revision += 1
@@ -87,7 +88,7 @@ final class DeliveryStore: ObservableObject {
         busy = true; defer { busy = false }
         do {
             let directory = evidenceDirectory
-            try await Task.detached(priority: .userInitiated) { for file in order.evidence { try EvidenceFiles.verify(file, directory: directory) } }.value
+            try await Task.detached(priority: .userInitiated) { for file in order.activeEvidence { try EvidenceFiles.verify(file, directory: directory) } }.value
             var next = ledger; let report = try next.prepareReport(id, text: text)
             try database!.save(next); ledger = next; return report
         } catch { message = error.localizedDescription; return nil }

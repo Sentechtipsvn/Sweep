@@ -17,6 +17,7 @@ PhotosPicker Transferables are retained until nested copies finish. Folder lease
 - Settlement values are absolute totals, not increments. Previous settlement events remain unchanged. Outcome, payment mode, commission, bank verification and reporting are independent.
 - Company bank verification references a specific settlement. Changing the settlement requires a new check, even if the bank amount looks the same; reports become stale when order revision changes.
 - Preparing a report verifies actual image files; the snapshot contains ordered evidence IDs and content. Sharing has no business side effect. Only an explicit acknowledgement references the current prepared snapshot.
+- Replacing an incorrect photo appends an exclusion event with a reason, then adds a new photo. Previous files and report snapshots remain available; only active evidence appears in a new report. Exclusion invalidates the current report and re-runs required-role checks.
 - Cash held is collected cash minus unreversed handovers. Commission is never deducted. A correction cannot reduce collected cash below handed-over cash. Handover reversals preserve the original event and explanation.
 - CSV exports all active signed assignments in the selected signed month. It escapes quotes/newlines and prefixes spreadsheet formula triggers, including after leading whitespace.
 

@@ -11,6 +11,8 @@ struct OrderDetailView: View {
     @State private var void = false
     @State private var bank = false
     @State private var reason = ""
+    @State private var excluding = false
+    @State private var excludedFile: UUID?
     private var order: DeliveryOrder? { store.order(id) }
     var body: some View {
         Group {
@@ -21,12 +23,12 @@ struct OrderDetailView: View {
                         LabeledContent("Tổng đơn", value: VND.format(order.total)).font(.headline)
                         LabeledContent("Mã phiếu", value: order.code).textSelection(.enabled)
                         if let date = order.invoiceAt { LabeledContent("Ngày hóa đơn", value: date.formatted(date: .numeric, time: .omitted)) }
-                        if let invoice = order.evidence.first(where: { $0.role == .invoice }) {
+                        if let invoice = order.activeEvidence.first(where: { $0.role == .invoice }) {
                             Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 200) }.buttonStyle(.plain)
                         }
                         HStack {
                             if let url = phoneURL(order.phone) { Link(destination: url) { Label("Gọi", systemImage: "phone") } }
-                            if !order.address.isEmpty, let url = URL(string: "https://maps.apple.com/?q=" + order.address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!) {
+                            if !order.address.isEmpty, let url = mapURL(order.address) {
                                 Link(destination: url) { Label("Đường", systemImage: "map") }
                             }
                             NavigationLink { BankCompanyView() } label: { Label("QR công ty", systemImage: "qrcode") }
@@ -58,12 +60,15 @@ struct OrderDetailView: View {
                     }
                     ForEach([EvidenceRole.invoice, .signature, .transfer], id: \.self) { role in
                         Section(role.rawValue) {
-                            let files = order.evidence.filter { $0.role == role }
+                            let files = order.activeEvidence.filter { $0.role == role }
                             if !files.isEmpty {
                                 ScrollView(.horizontal) {
                                     HStack {
                                         ForEach(files) { file in
                                             Button { preview = store.url(file) } label: { EvidenceThumbnail(url: store.url(file), height: 100).frame(width: 100) }.buttonStyle(.plain)
+                                                .contextMenu {
+                                                    Button("Loại khỏi bộ báo cáo…", role: .destructive) { excludedFile = file.id; reason = ""; excluding = true }
+                                                }
                                         }
                                     }
                                 }
@@ -76,9 +81,34 @@ struct OrderDetailView: View {
                             .foregroundStyle(order.reportSent ? .green : .secondary)
                         NavigationLink { OrderReportView(id: id) } label: { Label("Chuẩn bị và chia sẻ báo cáo", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("order.report")
                     }
-                    if !order.reviewNote.isEmpty { Section("Dữ liệu cũ cần rà soát") { Text(order.reviewNote).font(.footnote).textSelection(.enabled) } }
+                    if !order.reviewNote.isEmpty {
+                        Section("Dữ liệu cũ cần rà soát") {
+                            Text(order.reviewNote).font(.footnote).textSelection(.enabled)
+                            Button("Đánh dấu đã rà soát dữ liệu cũ") {
+                                _ = store.change { ledger in
+                                    guard let i = ledger.orders.firstIndex(where: { $0.id == id }) else { return }
+                                    let previous = ledger.orders[i].reviewNote
+                                    ledger.orders[i].reviewNote = ""
+                                    ledger.record("Sếp xác nhận đã rà soát sổ cũ", orderID: id, previous)
+                                }
+                            }
+                            Text("Thao tác này chỉ bỏ cờ nhắc, không tự xác nhận ngày ký, ghi công, đối soát CK hoặc gửi báo cáo.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     if !order.note.isEmpty { Section("Ghi chú hồ sơ") { Text(order.note) } }
                     Section {
+                        if !order.exclusions.isEmpty {
+                            NavigationLink("Ảnh gốc đã loại khỏi báo cáo (\(order.exclusions.count))") {
+                                List(order.evidence.filter { file in order.exclusions.contains { $0.evidenceID == file.id } }) { file in
+                                    Button { preview = store.url(file) } label: {
+                                        VStack(alignment: .leading) {
+                                            EvidenceThumbnail(url: store.url(file), height: 180)
+                                            Text(order.exclusions.first(where: { $0.evidenceID == file.id })?.reason ?? "").font(.caption)
+                                        }
+                                    }.buttonStyle(.plain)
+                                }.navigationTitle("Ảnh lưu trong lịch sử").quickLookPreview($preview)
+                            }
+                        }
                         NavigationLink("Lịch sử hồ sơ") { OrderHistoryView(id: id) }
                         if order.voidReason == nil { Button("Hủy hồ sơ nhập nhầm…", role: .destructive) { reason = ""; void = true } }
                         else { Text("Đã hủy: \(order.voidReason ?? "")").foregroundStyle(.secondary) }
@@ -103,6 +133,11 @@ struct OrderDetailView: View {
                     Button("Ghi nhận đối soát") { _ = store.change { try $0.verifyBank(id, note: reason) } }
                     Button("Để sau", role: .cancel) {}
                 } message: { Text("Ảnh khách chuyển khoản chưa đủ để xác nhận tiền đã vào công ty. Chỉ ghi nhận khi Sếp có thông tin từ công ty.") }
+                .alert("Loại ảnh khỏi bộ báo cáo?", isPresented: $excluding) {
+                    TextField("Lý do / ảnh bổ sung thay thế", text: $reason)
+                    Button("Loại khỏi báo cáo", role: .destructive) { if let excludedFile { _ = store.change { try $0.excludeEvidence(excludedFile, orderID: id, reason: reason) } } }
+                    Button("Giữ ảnh", role: .cancel) {}
+                } message: { Text("Giữ ảnh gốc và lịch sử. Bộ báo cáo mới sẽ bỏ ảnh này; Sếp thêm ảnh đúng nếu đó là chứng từ bắt buộc.") }
             } else { ContentUnavailableView("Không tìm thấy hồ sơ", systemImage: "doc.questionmark") }
         }
         .navigationTitle("Chi tiết đơn").navigationBarTitleDisplayMode(.inline)
@@ -114,6 +149,11 @@ struct OrderDetailView: View {
         let number = text.filter { $0.isNumber || $0 == "+" }
         guard number.filter(\.isNumber).count >= 8 else { return nil }
         return URL(string: "tel:\(number)")
+    }
+    private func mapURL(_ address: String) -> URL? {
+        var components = URLComponents(string: "https://maps.apple.com/")
+        components?.queryItems = [URLQueryItem(name: "q", value: address)]
+        return components?.url
     }
 }
 
@@ -237,16 +277,20 @@ struct OrderReportView: View {
     @State private var confirm = false
     @State private var copied = false
     @State private var preview: URL?
+    @State private var draftSaved = false
     var body: some View {
         List {
             if let order = store.order(id) {
                 Section("Nội dung có thể sửa") {
                     TextEditor(text: $text).frame(minHeight: 240).accessibilityIdentifier("report.text")
+                    Button(draftSaved ? "Đã lưu nội dung nháp" : "Lưu nội dung nháp") {
+                        if store.change({ try $0.saveReportDraft(id, text: text) }) { draftSaved = true }
+                    }.disabled(store.busy)
                     Button(copied ? "Đã sao chép" : "Sao chép nội dung") { UIPasteboard.general.string = text; copied = true }
                     Button("Tạo lại từ số liệu hiện tại") { text = order.reportText(); prepared = nil; copied = false }
                 }
                 Section("Thứ tự ảnh đính kèm") {
-                    let files = [EvidenceRole.invoice, .signature, .transfer].flatMap { role in order.evidence.filter { $0.role == role } }
+                    let files = [EvidenceRole.invoice, .signature, .transfer].flatMap { role in order.activeEvidence.filter { $0.role == role } }
                     ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
                         Button { preview = store.url(file) } label: {
                             HStack {
@@ -275,9 +319,12 @@ struct OrderReportView: View {
         .navigationTitle("Báo cáo đơn").navigationBarTitleDisplayMode(.inline)
         .onAppear {
             guard !initialized, let order = store.order(id) else { return }; initialized = true
-            if let report = order.reports.last, report.revision == order.revision { text = report.text; prepared = report }
+            if let draft = order.reportDrafts.last, draft.revision == order.revision,
+               order.reports.last?.text != draft.text, (order.reports.last?.preparedAt ?? .distantPast) < draft.at { text = draft.text }
+            else if let report = order.reports.last, report.revision == order.revision { text = report.text; prepared = report }
             else { text = order.reportText() }
         }
+        .onChange(of: text) { _, _ in copied = false; draftSaved = false }
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
         .quickLookPreview($preview)
         .alert("Sếp đã gửi đủ nội dung và ảnh?", isPresented: $confirm) {
