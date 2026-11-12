@@ -15,15 +15,19 @@ final class PhotoStore: NSObject, ObservableObject, PHPhotoLibraryChangeObserver
     private var task: Task<Void, Never>?
     private var generation = UUID()
     private var mutating = false
+    private var observing = false
 
     var canRead: Bool { authorization == .authorized || authorization == .limited }
     var screenshots: [PhotoRecord] { photos.filter(\.screenshot) }
 
     override init() {
         super.init()
-        PHPhotoLibrary.shared().register(self)
+        if canRead { PHPhotoLibrary.shared().register(self); observing = true }
     }
-    deinit { PHPhotoLibrary.shared().unregisterChangeObserver(self); task?.cancel() }
+    deinit {
+        if observing { PHPhotoLibrary.shared().unregisterChangeObserver(self) }
+        task?.cancel()
+    }
 
     nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
         Task { @MainActor [weak self] in
@@ -46,6 +50,8 @@ final class PhotoStore: NSObject, ObservableObject, PHPhotoLibraryChangeObserver
         generation = UUID()
         let token = generation
         authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if canRead, !observing { PHPhotoLibrary.shared().register(self); observing = true }
+        if !canRead, observing { PHPhotoLibrary.shared().unregisterChangeObserver(self); observing = false }
         groups = []; scanResult = nil
         guard canRead else { photos = []; visibleCount = 0; busy = false; return }
         busy = true; status = "Đang đọc danh sách ảnh…"

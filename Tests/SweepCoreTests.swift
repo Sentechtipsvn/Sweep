@@ -31,12 +31,17 @@ final class SweepCoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        try Data("inside".utf8).write(to: root.appendingPathComponent("file"))
         XCTAssertTrue(FileRules.isDescendant(root.appendingPathComponent("file"), of: root))
         XCTAssertFalse(FileRules.isDescendant(root, of: root))
         XCTAssertFalse(FileRules.isDescendant(URL(fileURLWithPath: root.path + "-sibling/file"), of: root))
         let link = root.appendingPathComponent("escape")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.deletingLastPathComponent())
         XCTAssertFalse(FileRules.isDescendant(link.appendingPathComponent("outside"), of: root))
+        let outside = root.deletingLastPathComponent().appendingPathComponent(UUID().uuidString)
+        try Data("outside".utf8).write(to: outside)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        XCTAssertFalse(FileRules.isDescendant(link.appendingPathComponent(outside.lastPathComponent), of: root))
     }
     func testEncodingResizesRotatesStripsGPSAndKeepsInput() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
