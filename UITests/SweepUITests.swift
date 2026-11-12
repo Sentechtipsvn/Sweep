@@ -30,8 +30,8 @@ final class SweepUITests: XCTestCase {
         let order = app.buttons["order.TEST-001"]
         XCTAssertTrue(order.waitForExistence(timeout: 15)); order.tap()
         reveal(app.buttons["order.sign"], in: app); app.buttons["order.sign"].tap()
-        app.switches["sign.confirm"].tap()
-        XCTAssertTrue(app.buttons["sign.save"].isEnabled)
+        app.buttons["sign.confirm"].tap()
+        waitUntil(app.buttons["sign.save"], in: app) { $0.exists && $0.isEnabled }
         app.buttons["sign.save"].tap()
         waitUntil(app.buttons["sign.save"], in: app) { !$0.exists }
         attach(app, name: "05-signed-assignment")

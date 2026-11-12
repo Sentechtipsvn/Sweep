@@ -20,11 +20,6 @@ jobs:
         run: |
           sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
-      - name: Start iPhone simulator while building
-        run: |
-          SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,items in d["devices"].items() if "iOS-18-5" in runtime for x in items if x["name"] == "iPhone 16"))')
-          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$SIMULATOR_ID" || xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Test delivery ledger, backup integrity and existing photo tools
         run: swift test
       - name: Generate Xcode project
@@ -47,7 +42,7 @@ jobs:
       - name: Smoke test navigation on iPhone simulator
         run: |
           set -o pipefail
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,items in d["devices"].items() if "iOS-18-5" in runtime for x in items if x["name"] == "iPhone 16"))')
           xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build-simulator \
             -resultBundlePath build-ui.xcresult CODE_SIGNING_ALLOWED=NO \

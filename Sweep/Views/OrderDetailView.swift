@@ -170,7 +170,13 @@ private struct SignAssignmentView: View {
         NavigationStack {
             Form {
                 DatePicker("Ngày Sếp ký nhận", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-                Toggle("Sếp đã ký phiếu nhận việc đi giao", isOn: $confirmed).accessibilityIdentifier("sign.confirm")
+                Button { confirmed.toggle() } label: {
+                    Label("Sếp đã ký phiếu nhận việc đi giao", systemImage: confirmed ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(confirmed ? Color.green : Color.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("sign.confirm")
+                    .accessibilityValue(confirmed ? "Đã xác nhận" : "Chưa xác nhận")
                 Text("Ghi công \(VND.format(store.ledger.settings.fee)) đúng một lần. Giao thất bại, chưa thu hoặc CK sau vẫn giữ công. Nhập đơn cũ: chọn đúng ngày ký, không dùng ngày nhập ảnh.").font(.footnote).foregroundStyle(.secondary)
                 Button("Ghi công ký nhận") { if store.change({ try $0.sign(id, at: date) }) { dismiss() } }.disabled(!confirmed).accessibilityIdentifier("sign.save")
             }.navigationTitle("Xác nhận ký nhận").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
