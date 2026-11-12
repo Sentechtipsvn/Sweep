@@ -43,9 +43,12 @@ final class SweepUITests: XCTestCase {
         app.buttons["CK + tiền mặt"].firstMatch.tap()
         replace(app.textFields["settle.cash"], with: "600000")
         replace(app.textFields["settle.bank"], with: "1500000")
-        let note = app.descendants(matching: .any).matching(identifier: "settle.note").firstMatch
+        dismissKeyboard(in: app)
+        let note = app.textFields["settle.note"]
         reveal(note, in: app)
+        waitUntil(note, in: app) { $0.exists && $0.isHittable }
         note.tap(); note.typeText("Hen giao lai, da nhan mot phan")
+        dismissKeyboard(in: app)
         reveal(app.buttons["settle.save"], in: app); app.buttons["settle.save"].tap()
         XCTAssertTrue(app.buttons["order.settle"].waitForExistence(timeout: 5))
         reveal(app.buttons["order.report"], in: app); app.buttons["order.report"].tap()
@@ -70,7 +73,20 @@ final class SweepUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<8 { if element.exists && element.isHittable { return }; app.swipeUp() }
+        for _ in 0..<8 {
+            if element.exists && element.isHittable { return }
+            let collection = app.collectionViews.allElementsBoundByIndex.last { $0.isHittable }
+            let table = app.tables.allElementsBoundByIndex.last { $0.isHittable }
+            let scroll = collection ?? table ?? app.scrollViews.allElementsBoundByIndex.last { $0.isHittable }
+            if let scroll { scroll.swipeUp() } else { app.swipeUp() }
+        }
+    }
+
+    private func dismissKeyboard(in app: XCUIApplication) {
+        let done = app.buttons["keyboard.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+        waitUntil(app.keyboards.firstMatch, in: app) { !$0.exists }
     }
 
     private func replace(_ field: XCUIElement, with value: String) {

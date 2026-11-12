@@ -271,7 +271,18 @@ struct SettlementView: View {
                     }.accessibilityIdentifier("settle.save")
                     Text("Có thể lưu khi chưa đủ ảnh. Báo cáo hoàn chỉnh sẽ kiểm tra chứng từ riêng. Hủy chia sẻ không hủy số tiền đã lưu.").font(.caption).foregroundStyle(.secondary)
                 }
-            }.navigationTitle("Chốt giao / thu tiền").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Chốt giao / thu tiền").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                CloseSheet { dismiss() }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Xong") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }.accessibilityIdentifier("keyboard.done")
+                }
+            }
         }
     }
 }
