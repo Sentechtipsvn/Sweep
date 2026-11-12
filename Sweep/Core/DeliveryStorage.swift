@@ -48,11 +48,12 @@ final class DeliveryDatabase {
         let ledger = try DeliveryCoding.decode(DeliveryLedger.self, from: Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0))))
         try ledger.validate(); return ledger
     }
-    func save(_ ledger: DeliveryLedger) throws {
+    func save(_ ledger: DeliveryLedger, replacing: Bool = false) throws {
         try ledger.validate()
         let data = try DeliveryCoding.encode(ledger)
         try execute("BEGIN IMMEDIATE")
         do {
+            if !replacing { try ledger.validateAppendOnly(from: load()) }
             try execute("INSERT OR REPLACE INTO ledger(id,payload) SELECT 2,payload FROM ledger WHERE id=1")
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(connection, "INSERT OR REPLACE INTO ledger(id,payload) VALUES(1,?)", -1, &statement, nil) == SQLITE_OK else { throw failure() }
@@ -123,9 +124,11 @@ enum EvidenceFiles {
 /// No decoding of arbitrary paths, no ZIP expansion and no unbounded allocation for image payloads.
 enum DeliveryBackup {
     struct Manifest: Codable { var version = 1; var createdAt = Date(); var ledger: DeliveryLedger }
-    struct Prepared {
+    final class Prepared: @unchecked Sendable {
         let ledger: DeliveryLedger
         let staging: URL
+        init(ledger: DeliveryLedger, staging: URL) { self.ledger = ledger; self.staging = staging }
+        deinit { try? FileManager.default.removeItem(at: staging) }
     }
     static let magic = Data("SWEEP001".utf8)
     static func write(_ ledger: DeliveryLedger, evidence: URL, to destination: URL) throws {

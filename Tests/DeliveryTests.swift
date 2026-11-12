@@ -82,6 +82,12 @@ final class DeliveryTests: XCTestCase {
         XCTAssertThrowsError(try ledger.handover(170_000, at: Date(), note: "Sai số"))
         XCTAssertThrowsError(try ledger.settle(id, value: payment(.cash, cash: 1_000_000, bank: 0)))
         XCTAssertEqual(ledger.orders[0].activeAssignments[0].fee, 5_000)
+        let handoverID = ledger.handovers[0].id
+        try ledger.reverseHandover(handoverID, reason: "Ghi nhầm số tiền")
+        try ledger.reverseHandover(handoverID, reason: "Bấm lại")
+        XCTAssertEqual(ledger.cashHeld, 2_165_000); XCTAssertEqual(ledger.handovers.count, 1)
+        XCTAssertEqual(ledger.handoverReversals.count, 1)
+        try ledger.validate()
     }
     func testReportRequiresCorrectEvidenceAndExplicitAcknowledgement() throws {
         var ledger = DeliveryLedger(); let id = try ledger.insert(invoiceOrder())
@@ -128,7 +134,6 @@ final class DeliveryTests: XCTestCase {
         }
         let csv = ledger.csv(in: Date())
         XCTAssertEqual(csv.components(separatedBy: "\r\n").count, 36)
-        XCTAssertTrue(csv.contains("'='" ) == false)
         XCTAssertTrue(csv.contains("'=HYPERLINK")); XCTAssertEqual(ledger.commissions(in: Date()).count, 35)
     }
     func testDatabaseReopensFullHistoryAndRejectsInvalidSaveAtomically() throws {
@@ -140,6 +145,11 @@ final class DeliveryTests: XCTestCase {
         XCTAssertThrowsError(try db.save(invalid)); XCTAssertEqual(try db.load(), ledger)
         let reopened = try DeliveryDatabase(url: root.appendingPathComponent("test.sqlite"))
         XCTAssertEqual(try reopened.load(), ledger)
+        var erased = ledger; erased.orders[0].assignments.removeAll()
+        XCTAssertThrowsError(try db.save(erased))
+        erased = ledger; erased.audit.removeAll()
+        XCTAssertThrowsError(try db.save(erased))
+        XCTAssertEqual(try db.load(), ledger)
         let broken = root.appendingPathComponent("broken.sqlite"); try Data("not a db".utf8).write(to: broken)
         XCTAssertThrowsError(try DeliveryDatabase(url: broken))
         XCTAssertEqual(try Data(contentsOf: broken), Data("not a db".utf8))

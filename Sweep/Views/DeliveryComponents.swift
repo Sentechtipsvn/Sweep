@@ -42,6 +42,7 @@ struct EvidencePicker: View {
             Task {
                 do {
                     guard let image = try await item.loadTransferable(type: ImportedImage.self) else { throw DeliveryError.invalid("Không đọc được ảnh.") }
+                    defer { withExtendedLifetime(image) {} }
                     await onChoose(image.url)
                 } catch { store.message = error.localizedDescription }
                 selection = nil
@@ -52,6 +53,7 @@ struct EvidencePicker: View {
                 do {
                     let source = try result.get()
                     let image = try await Task.detached { try ImportedImage.copy(from: source) }.value
+                    defer { withExtendedLifetime(image) {} }
                     await onChoose(image.url)
                 } catch { store.message = error.localizedDescription }
             }

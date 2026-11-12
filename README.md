@@ -1,10 +1,24 @@
 # Sweep
 
-**Ảnh gọn. Bộ nhớ thoáng.** · © Sentechtipsvn
+**Sổ giao hàng và công cụ ảnh trên iPhone.** · © Sentechtipsvn
 
-Ứng dụng iPhone/iPad xử lý ảnh và kiểm tra dung lượng trên thiết bị. Bản thử nghiệm **0.1.0 (1)**, yêu cầu **iOS 17.0 trở lên**. Máy kiểm thử đích: iPhone 11/iOS 18.7.8. Chưa xác nhận hoạt động trên máy thật cho đến khi chủ dự án cài và thử. Không cần LocalDevVPN hoặc pairing cho những công cụ trong bản này.
+Bản thử nghiệm **0.2.0 (2)**, yêu cầu **iOS 17.0 trở lên**. Máy đích: iPhone 11/iOS 18.7.8. Công cụ nén và danh sách ảnh của 0.1.0 đã được chủ dự án thử trên iPhone; các luồng giao hàng mới cần thử tiếp trên thiết bị. Không cần LocalDevVPN, tài khoản hoặc máy chủ của Sweep.
 
-## Đã triển khai
+## Sổ giao hàng 0.2.0
+
+- Bốn tab: Đơn hàng / Đối soát / Công cụ / Cài đặt; bỏ banner lớn, giữ bốn công cụ ảnh cũ.
+- Nhập phiếu từ Ảnh, Tệp hoặc camera; tên, mã phiếu duy nhất, tổng VND, điện thoại và địa chỉ nhập/kiểm tra thủ công. Ảnh sao chép riêng, kiểm tra hash trước khi hoàn tất. Có nháp chưa tính công.
+- Nhập đọc-only thư mục Bill 3.2.0 `SenTechTips_AnhDonHang`: nhận `sen-bill-v1` và `sen-orders-v3` có bản ghi JSON hoặc chuỗi JSON. Xem trước từng hồ sơ, giữ khoản tiền cũ, không tự lấy ngày giao làm ngày ký. Lưu bản metadata nguồn và ngày lưu bên Bill. Chưa thử trên sổ riêng thực tế của chủ dự án.
+- Mỗi hồ sơ có đúng một lượt ký nhận đi giao, mặc định 5.000₫; ngày ký tách ngày nhập/ngày hóa đơn/ngày chốt. Giao thất bại, CK sau và báo cáo lại không đổi công. Đổi mức công chỉ áp dụng lượt ký mới.
+- Chốt tiền mặt / CK / CK sau / hỗn hợp; nhập số thực tế, kiểm tra khoản thừa, giữ tiền khi đổi kết quả giao. CK khách báo tách CK công ty xác nhận; sửa lần chốt cần đối soát lại.
+- Lưu nhiều ảnh theo vai trò phiếu nội bộ / phiếu khách ký / giao dịch. Báo cáo kiểm tra đủ chứng từ, cho sửa nội dung và xem thứ tự ảnh. Chia sẻ iOS, có nút sao chép và chia sẻ riêng ảnh. Chỉ xác nhận đã gửi bằng nút riêng; sửa hồ sơ làm báo cáo cần gửi lại.
+- Công theo tháng ký, so với số kế toán, CSV toàn bộ phiếu; tiền mặt toàn sổ và nộp tiền riêng. Hủy hồ sơ nhập nhầm và điều chỉnh lần nộp nhầm giữ sự kiện gốc, lý do và lịch sử.
+- QR/tài khoản công ty do người dùng cấu hình. Gọi và Apple Maps từ thông tin người dùng nhập, không đoán số/địa chỉ.
+- SQLite giao dịch nguyên tử, lịch sử tiền/công chỉ bổ sung. Sao lưu `.sweepbackup` gồm sổ và ảnh gốc, ghi/đọc theo luồng và kiểm tra SHA-256. Khôi phục kiểm tra toàn bộ trước, giữ bản trước khôi phục và chỉ thay sổ khi hoàn tất.
+
+Xem [hướng dẫn giao hàng](docs/DELIVERY.md), [kiến trúc dữ liệu](docs/DELIVERY-ARCHITECTURE.md) và [điểm cần thử trên iPhone](docs/TESTING.md).
+
+## Công cụ ảnh giữ từ 0.1.0
 
 - **Ảnh trùng:** SHA-256 dữ liệu gốc, chỉ gom ảnh tĩnh có đúng một tài nguyên gốc. Giới hạn mặc định 500 ảnh gần nhất; chỉnh 100–5.000 trong Cài đặt. Ưu tiên gợi ý giữ ảnh yêu thích, bảo vệ ít nhất một bản mỗi nhóm. Không tự chọn xóa.
 - **Ảnh màn hình:** danh sách, xem ảnh lớn, chọn xóa và xác nhận. Xóa bằng PhotoKit.
@@ -19,7 +33,7 @@
 - Đọc ảnh gốc trên iCloud cần tải mạng. Mặc định tắt tải khi quét; chỉ báo kết quả phần đã đọc thành công. Chọn nhập ảnh để nén có thể tải ảnh đó từ iCloud.
 - Nén JPEG SDR, không giữ GPS/EXIF, vùng trong suốt thành trắng. Không giữ Live Photo/HDR/RAW hoặc lịch sử chỉnh sửa. Không cam kết đầu ra luôn nhỏ hơn; hiển thị số byte thực tế. Giới hạn đầu vào 80 MB/120 megapixel.
 - Ảnh xóa vào Đã xóa gần đây và có thể đồng bộ xóa qua iCloud Photos. Số byte ảnh không đồng nghĩa dung lượng đã giải phóng.
-- Chưa có nén video, OCR, Shortcuts, quét gia tăng, chạy nền dài hoặc dọn qua pairing. Không dọn cache app khác/Dữ liệu hệ thống.
+- Chưa có OCR native, nhận đơn tự động từ Zalo, Share Extension, đồng bộ hai chiều với Bill, nén video, quét gia tăng, chạy nền dài hoặc dọn qua pairing. Không dọn cache app khác/Dữ liệu hệ thống.
 
 ## Build và kiểm thử
 
@@ -36,7 +50,7 @@ xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Release \
 
 GitHub Actions **Build Sweep IPA** chạy kiểm thử core và build app arm64. Artifact chứa **IPA chưa ký**, cần ký/cài qua công cụ sideload. Chưa tự phát hành lên nguồn AltStore; chỉ thêm sau khi thử trên máy thật.
 
-Các bài kiểm thử: nhóm trùng theo hash/byte, bỏ tài nguyên không hỗ trợ, gợi ý giữ ảnh yêu thích, ngăn xóa hết nhóm, không đếm lặp ID, đường dẫn/symlink thoát thư mục, ảnh nén đúng kích thước/chiều xoay/bỏ GPS/giữ đầu vào và từ chối tệp lỗi. Chúng không thay thế kiểm thử PhotoKit/quyền/xóa/iCloud trên iPhone.
+Kiểm thử mới bao gồm công theo ngày ký, chống lặp, tiền thực tế, đối soát CK, lịch sử bất biến, SQLite mở lại, nhập schema Bill, CSV, sao lưu/ảnh lỗi và điều hướng trên simulator. Các bài kiểm thử công cụ ảnh: nhóm trùng theo hash/byte, bỏ tài nguyên không hỗ trợ, gợi ý giữ ảnh yêu thích, ngăn xóa hết nhóm, không đếm lặp ID, đường dẫn/symlink thoát thư mục, ảnh nén đúng kích thước/chiều xoay/bỏ GPS/giữ đầu vào và từ chối tệp lỗi. Chúng không thay thế kiểm thử PhotoKit/quyền/xóa/iCloud trên iPhone.
 
 Xem [kịch bản thử trên iPhone](docs/TESTING.md) trước khi dùng trên dữ liệu quan trọng.
 

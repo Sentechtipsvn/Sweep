@@ -133,7 +133,8 @@ struct OrderIntakeView: View {
             order.phone = phone; order.address = address; order.invoiceAt = hasInvoiceDate ? invoiceDate : nil
             if let candidate {
                 guard order.total >= candidate.cash + candidate.bank else { throw DeliveryError.invalid("Tổng sửa thấp hơn khoản thu cũ. Kiểm tra sổ trước khi nhập.") }
-                order.sourceID = candidate.id; order.reviewNote = candidate.isLegacy ? candidate.note : ""
+                order.sourceID = candidate.id; order.sourceCreatedAt = candidate.createdAt; order.sourceSnapshot = candidate.sourceSnapshot
+                order.reviewNote = candidate.isLegacy ? candidate.note : ""
                 if candidate.cash > 0 || candidate.bank > 0 || candidate.deliveredAt != nil {
                     let mode: PaymentMode = candidate.cash > 0 && candidate.bank > 0 ? .mixed : candidate.bank > 0 ? .bank : candidate.cash > 0 ? .cash : .none
                     order.settlements = [Settlement(outcome: candidate.deliveredAt == nil ? .pending : .delivered, mode: mode, cash: candidate.cash, bank: candidate.bank, note: candidate.note, at: candidate.deliveredAt ?? candidate.createdAt ?? Date())]

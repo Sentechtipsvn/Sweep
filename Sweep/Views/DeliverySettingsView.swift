@@ -46,6 +46,7 @@ struct DeliveryBackupView: View {
     @State private var prepared: DeliveryBackup.Prepared?
     @State private var sharing: DeliveryShare?
     @State private var confirm = false
+    @State private var recoveries: [URL] = []
     var body: some View {
         Form {
             Section("Sao lưu sổ và toàn bộ chứng từ") {
@@ -62,6 +63,15 @@ struct DeliveryBackupView: View {
                     Button("Thay sổ hiện tại bằng bản đã kiểm tra…", role: .destructive) { confirm = true }
                 }
                 Text("Khôi phục thay toàn bộ sổ, không gộp hai sổ. Sweep giữ một bản trước khôi phục trên máy; ảnh thiếu hoặc sai hash sẽ bị từ chối trước khi thay dữ liệu.").font(.caption).foregroundStyle(.secondary)
+            }
+            if !recoveries.isEmpty {
+                Section("Bản giữ trước các lần khôi phục") {
+                    ForEach(recoveries, id: \.self) { url in
+                        Button { sharing = DeliveryShare(items: [url]) } label: {
+                            Label("Xuất bản trước khôi phục · \(url.lastPathComponent.dropFirst(15).prefix(8))", systemImage: "clock.arrow.circlepath")
+                        }
+                    }
+                }
             }
         }
         .navigationTitle("Sao lưu và khôi phục").navigationBarTitleDisplayMode(.inline)
@@ -84,6 +94,8 @@ struct DeliveryBackupView: View {
             }
             Button("Giữ sổ đang dùng", role: .cancel) {}
         } message: { Text("Sổ \(store.ledger.orders.count) hồ sơ hiện tại sẽ được thay bằng \(prepared?.ledger.orders.count ?? 0) hồ sơ của bản sao. Xuất bản hiện tại ra Tệp trước nếu Sếp cần giữ riêng.") }
-        .onDisappear { if let prepared, !store.busy { try? FileManager.default.removeItem(at: prepared.staging) } }
+        .onAppear {
+            recoveries = ((try? FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent.hasPrefix("Before-restore-") && $0.pathExtension == "sweepbackup" }
+        }
     }
 }

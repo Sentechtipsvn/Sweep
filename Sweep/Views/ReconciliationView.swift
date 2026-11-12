@@ -45,6 +45,8 @@ struct ReconciliationView: View {
                             Text(VND.format(value.amount)).font(.headline)
                             Text(value.at.formatted(date: .numeric, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                             Text(value.note).font(.footnote)
+                            if let reversal = store.ledger.handoverReversals.first(where: { $0.handoverID == value.id }) { Text("Đã điều chỉnh: \(reversal.reason)").font(.caption).foregroundStyle(.orange) }
+                            else { NavigationLink("Điều chỉnh ghi nhầm…") { HandoverCorrectionView(value: value) } }
                         }
                     }.navigationTitle("Tiền đã nộp")
                 }
@@ -72,6 +74,28 @@ struct ReconciliationView: View {
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
     }
     private func moveMonth(_ offset: Int) { month = Calendar.current.date(byAdding: .month, value: offset, to: month) ?? month; accountantCount = ""; accountantAmount = "" }
+}
+
+private struct HandoverCorrectionView: View {
+    let value: CashHandover
+    @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var reason = ""
+    @State private var confirm = false
+    var body: some View {
+        Form {
+            LabeledContent("Lần đã ghi nộp", value: VND.format(value.amount))
+            Text(value.note)
+            Text("Chỉ dùng khi ghi nhầm vào sổ. Tiền đã nộp thật vẫn phải đối chiếu với người nhận; thao tác này không tạo giao dịch hoàn tiền.").font(.footnote).foregroundStyle(.secondary)
+            TextField("Lý do điều chỉnh", text: $reason, axis: .vertical)
+            Button("Hủy bản ghi nhập nhầm…", role: .destructive) { confirm = true }.disabled(reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .navigationTitle("Điều chỉnh nộp tiền")
+        .alert("Hủy ghi nhận lần nộp này?", isPresented: $confirm) {
+            Button("Điều chỉnh, giữ lịch sử", role: .destructive) { if store.change({ try $0.reverseHandover(value.id, reason: reason) }) { dismiss() } }
+            Button("Giữ nguyên", role: .cancel) {}
+        } message: { Text("Tiền còn giữ sẽ tăng lại \(VND.format(value.amount)). Lý do: \(reason)") }
+    }
 }
 
 private struct HandoverView: View {

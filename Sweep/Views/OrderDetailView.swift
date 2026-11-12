@@ -236,6 +236,7 @@ struct OrderReportView: View {
     @State private var sharing: DeliveryShare?
     @State private var confirm = false
     @State private var copied = false
+    @State private var preview: URL?
     var body: some View {
         List {
             if let order = store.order(id) {
@@ -245,8 +246,15 @@ struct OrderReportView: View {
                     Button("Tạo lại từ số liệu hiện tại") { text = order.reportText(); prepared = nil; copied = false }
                 }
                 Section("Thứ tự ảnh đính kèm") {
-                    ForEach([EvidenceRole.invoice, .signature, .transfer], id: \.self) { role in
-                        LabeledContent(role.rawValue, value: "\(order.evidence.filter { $0.role == role }.count) ảnh")
+                    let files = [EvidenceRole.invoice, .signature, .transfer].flatMap { role in order.evidence.filter { $0.role == role } }
+                    ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
+                        Button { preview = store.url(file) } label: {
+                            HStack {
+                                EvidenceThumbnail(url: store.url(file), height: 70).frame(width: 60)
+                                Text("\(index + 1) · \(file.role.rawValue)")
+                                Spacer(); Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            }
+                        }.buttonStyle(.plain)
                     }
                     if !order.missingEvidence().isEmpty { Text("Còn thiếu: " + order.missingEvidence().map(\.rawValue).joined(separator: ", ")).foregroundStyle(.orange) }
                     Button("Kiểm tra và chuẩn bị báo cáo") {
@@ -271,6 +279,7 @@ struct OrderReportView: View {
             else { text = order.reportText() }
         }
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
+        .quickLookPreview($preview)
         .alert("Sếp đã gửi đủ nội dung và ảnh?", isPresented: $confirm) {
             Button("Đúng, đã gửi") { if let prepared { _ = store.change { try $0.acknowledgeReport(id, reportID: prepared.id) } } }
             Button("Chưa gửi", role: .cancel) {}

@@ -118,7 +118,7 @@ final class DeliveryStore: ObservableObject {
             }.value
             var next = prepared.ledger
             next.record("Khôi phục sổ", "Bản trước khi khôi phục: \(recovery.lastPathComponent)")
-            try database!.save(next); ledger = next
+            try database!.save(next, replacing: true); ledger = next
             return true
         } catch { message = error.localizedDescription; return false }
     }

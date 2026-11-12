@@ -13,6 +13,7 @@ struct BillCandidate: Identifiable {
     var createdAt: Date?
     var note = ""
     var isLegacy = false
+    var sourceSnapshot: String?
     var image: URL
 }
 struct BillImportResult { var candidates: [BillCandidate]; var warnings: [String] }
@@ -54,7 +55,8 @@ enum BillImport {
             }
             return BillCandidate(id: "bill:\(id)", filename: filename, customer: customer, total: total, cash: cash, bank: bank,
                                  deliveredAt: date(text(record, "deliveredAt")), createdAt: date(text(record, "createdAt")),
-                                 note: note.trimmingCharacters(in: .whitespacesAndNewlines), isLegacy: isLegacy, image: images.appendingPathComponent(filename))
+                                 note: note.trimmingCharacters(in: .whitespacesAndNewlines), isLegacy: isLegacy,
+                                 sourceSnapshot: String(data: try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), encoding: .utf8), image: images.appendingPathComponent(filename))
         }
         if legacy {
             guard root["_schema"] as? String == "sen-orders-v3" else { throw DeliveryError.invalid("Chỉ hỗ trợ sổ Bill/Ảnh đơn hàng sen-orders-v3.") }

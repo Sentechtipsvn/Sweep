@@ -110,6 +110,8 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var invoiceAt: Date?
     var importedAt = Date()
     var sourceID: String?
+    var sourceCreatedAt: Date?
+    var sourceSnapshot: String?
     var reviewNote = ""
     var note = ""
     var revision = 1
@@ -160,6 +162,12 @@ struct CashHandover: Codable, Identifiable, Equatable {
     var at: Date
     var note: String
 }
+struct HandoverReversal: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var handoverID: UUID
+    var reason: String
+    var at = Date()
+}
 struct DeliverySettings: Codable, Equatable {
     var fee: Int64 = 5_000
     var company = ""
@@ -177,10 +185,14 @@ struct DeliveryLedger: Codable, Equatable {
     var schema = 1
     var orders: [DeliveryOrder] = []
     var handovers: [CashHandover] = []
+    var handoverReversals: [HandoverReversal] = []
     var settings = DeliverySettings()
     var audit: [DeliveryAudit] = []
     var cashCollected: Int64 { orders.reduce(0) { $0 + $1.cash } }
-    var cashHanded: Int64 { handovers.reduce(0) { $0 + $1.amount } }
+    var cashHanded: Int64 {
+        let reversed = Set(handoverReversals.map(\.handoverID))
+        return handovers.filter { !reversed.contains($0.id) }.reduce(0) { $0 + $1.amount }
+    }
     var cashHeld: Int64 { cashCollected - cashHanded }
     var bankPending: Int64 { orders.reduce(0) { $0 + $1.bank - $1.verifiedBank } }
     var allEvidence: [DeliveryEvidence] { orders.flatMap(\.evidence) + (settings.qr.map { [$0] } ?? []) }
@@ -253,6 +265,12 @@ struct DeliveryLedger: Codable, Equatable {
         }
         handovers.append(CashHandover(amount: amount, at: at, note: note)); record("Nộp tiền mặt", "\(amount) · \(note)")
     }
+    mutating func reverseHandover(_ id: UUID, reason: String) throws {
+        guard handovers.contains(where: { $0.id == id }), !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Ghi lý do điều chỉnh lần nộp tiền nhập nhầm.") }
+        guard !handoverReversals.contains(where: { $0.handoverID == id }) else { return }
+        handoverReversals.append(HandoverReversal(handoverID: id, reason: reason))
+        record("Hủy ghi nhầm lần nộp tiền", "\(id) · \(reason)")
+    }
     mutating func void(_ id: UUID, reason: String) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nhập lý do hủy hồ sơ.") }
         guard orders[i].cash == 0 && orders[i].bank == 0 else { throw DeliveryError.invalid("Hồ sơ còn khoản thu. Rà soát, điều chỉnh tiền trước khi hủy.") }
@@ -266,7 +284,8 @@ struct DeliveryLedger: Codable, Equatable {
     func csv(in month: Date, calendar: Calendar = .current) -> String {
         func escape(_ text: String) -> String {
             // Prevent spreadsheet formula execution from customer-controlled names and codes.
-            let safe = ["=", "+", "-", "@", "\t", "\r"].contains(String(text.first ?? " ")) ? "'" + text : text
+            let leading = text.trimmingCharacters(in: .whitespacesAndNewlines).first ?? " "
+            let safe = "=+-@".contains(leading) || text.hasPrefix("\t") || text.hasPrefix("\r") ? "'" + text : text
             return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         let header = ["Mã phiếu", "Khách", "Ngày ký", "Kết quả", "Tiền mặt", "CK khách báo", "CK đối soát", "Còn lại", "Công VND", "ID lượt ký"]
@@ -287,6 +306,7 @@ struct DeliveryLedger: Codable, Equatable {
             try VND.check(order.total)
             for value in order.settlements { try value.validate(total: order.total) }
             for value in order.assignments { try VND.check(value.fee) }
+            guard order.assignments.isEmpty || order.evidence.contains(where: { $0.role == .invoice }) else { throw DeliveryError.invalid("Lượt ký nhận thiếu phiếu nội bộ.") }
             for reversal in order.reversals where !order.assignments.contains(where: { $0.id == reversal.assignmentID }) { throw DeliveryError.invalid("Điều chỉnh công thiếu lượt ký gốc.") }
             for check in order.bankChecks {
                 guard order.settlements.contains(where: { $0.id == check.settlementID && $0.bank == check.amount }), check.amount > 0 else { throw DeliveryError.invalid("Đối soát CK không khớp khoản thu.") }
@@ -295,6 +315,14 @@ struct DeliveryLedger: Codable, Equatable {
             for ack in order.reportAcks where !order.reports.contains(where: { $0.id == ack.reportID }) { throw DeliveryError.invalid("Xác nhận gửi thiếu báo cáo gốc.") }
         }
         for value in handovers { try VND.check(value.amount); guard value.amount > 0 else { throw DeliveryError.invalid("Lần nộp tiền không hợp lệ.") } }
+        for value in handoverReversals where !handovers.contains(where: { $0.id == value.handoverID }) { throw DeliveryError.invalid("Điều chỉnh nộp tiền thiếu bản ghi gốc.") }
+        guard Set(handoverReversals.map(\.handoverID)).count == handoverReversals.count else { throw DeliveryError.invalid("Trùng điều chỉnh nộp tiền.") }
+        var ids = orders.map(\.id) + handovers.map(\.id) + handoverReversals.map(\.id) + audit.map(\.id) + allEvidence.map(\.id)
+        for order in orders {
+            ids += order.assignments.map(\.id) + order.reversals.map(\.id) + order.settlements.map(\.id)
+            ids += order.bankChecks.map(\.id) + order.reports.map(\.id) + order.reportAcks.map(\.id)
+        }
+        guard Set(ids).count == ids.count else { throw DeliveryError.invalid("Trùng ID sự kiện trong sổ.") }
         guard cashHeld >= 0, Set(allEvidence.map(\.id)).count == allEvidence.count,
               Set(allEvidence.map(\.filename)).count == allEvidence.count else { throw DeliveryError.invalid("Sổ tiền mặt hoặc danh sách ảnh không hợp lệ.") }
         for file in allEvidence {
@@ -302,6 +330,18 @@ struct DeliveryLedger: Codable, Equatable {
                   UUID(uuidString: String(file.filename.prefix(36))) != nil,
                   file.sha256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
                   file.bytes > 0, file.bytes <= 80 * 1024 * 1024 else { throw DeliveryError.invalid("Đường dẫn hoặc thông tin ảnh không hợp lệ.") }
+        }
+    }
+    func validateAppendOnly(from previous: DeliveryLedger) throws {
+        func keeps<T: Equatable>(_ before: [T], _ after: [T]) -> Bool { after.starts(with: before) }
+        guard keeps(previous.audit, audit), keeps(previous.handovers, handovers), keeps(previous.handoverReversals, handoverReversals) else { throw DeliveryError.invalid("Không được xóa hoặc sửa lịch sử tài chính.") }
+        let indexed = Dictionary(uniqueKeysWithValues: orders.map { ($0.id, $0) })
+        for old in previous.orders {
+            guard let new = indexed[old.id], old.sourceID == new.sourceID, old.sourceSnapshot == new.sourceSnapshot,
+                  old.sourceCreatedAt == new.sourceCreatedAt, new.revision >= old.revision,
+                  keeps(old.evidence, new.evidence), keeps(old.assignments, new.assignments), keeps(old.reversals, new.reversals),
+                  keeps(old.settlements, new.settlements), keeps(old.bankChecks, new.bankChecks), keeps(old.reports, new.reports), keeps(old.reportAcks, new.reportAcks),
+                  old.voidReason == nil || old.voidReason == new.voidReason else { throw DeliveryError.invalid("Lịch sử hồ sơ phải được giữ nguyên; dùng bản ghi điều chỉnh.") }
         }
     }
 }
