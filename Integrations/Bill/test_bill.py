@@ -34,6 +34,12 @@ class BillTests(unittest.TestCase):
         self.assertEqual(r['name'],'BÁNH THỬ NGHIỆM')
         self.assertEqual(r['total'],'2136000')
         self.assertEqual(r['schema'],'sen-bill-v1')
+    def test_decomposed_unicode_headers(self):
+        r=self.record(self.run_bill(ocr=unicodedata.normalize('NFD',OCR)))
+        self.assertEqual(r['invoiceCode'],'7856')
+        self.assertEqual(unicodedata.normalize('NFC',r['address']),'12 Đường Mẫu, TP HCM')
+        self.assertEqual(r['phone'],'0900000000')
+        self.assertEqual(unicodedata.normalize('NFC',r['deliveryNote']),'Trước 10h sáng')
     def test_missing_code_requires_input(self):
         r=self.record(self.run_bill(ocr=OCR.replace('Số : 7856',''), answers=['7857']))
         self.assertEqual(r['invoiceCode'],'7857')

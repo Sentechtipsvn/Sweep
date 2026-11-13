@@ -22,10 +22,10 @@ EDIT_PHONE = "☎️ Sửa điện thoại"
 EDIT_NOTE = "🕒 Sửa ghi chú giao hàng"
 CODE_PATTERN = r'\A[A-Za-z0-9][A-Za-z0-9./_-]{0,47}\z'
 HEADER_PATTERNS = {
-    "BillCode": r'(?im)(?:^|[ \t])[Ss][ốo]\s*[:：]\s*([^\s]+)',
-    "BillAddress": r'(?im)(?:^|[ \t])[ĐđDd][ịi]a[ \t]+ch[ỉi][ \t]*[:：][ \t]*([^\r\n]+)',
-    "BillPhone": r'(?im)(?:^|[ \t])[ĐđDd]i[ệe]n[ \t]+tho[ạa]i[ \t]*[:：][ \t]*([+0-9][0-9 .()+-]{8,22})',
-    "BillDeliveryNote": r'(?im)(?:^|[ \t])[ĐđDd][ịi]a[ \t]+ch[ỉi][ \t]+giao[ \t]+h[àa]ng[ \t]*[:：][ \t]*([^\r\n]+)'
+    "BillCode": r'(?im)(?:^|[ \t])[Ss][ốoô]\p{M}*\s*[:：]\s*([^\s]+)',
+    "BillAddress": r'(?im)(?:^|[ \t])[ĐđDd][ịi]\p{M}*a[ \t]+ch[ỉi]\p{M}*[ \t]*[:：][ \t]*([^\r\n]+)',
+    "BillPhone": r'(?im)(?:^|[ \t])[ĐđDd]i[ệeê]\p{M}*n[ \t]+tho[ạa]\p{M}*i[ \t]*[:：][ \t]*([+0-9][0-9 .()+-]{8,22})',
+    "BillDeliveryNote": r'(?im)(?:^|[ \t])[ĐđDd][ịi]\p{M}*a[ \t]+ch[ỉi]\p{M}*[ \t]+giao[ \t]+h[àa]\p{M}*ng[ \t]*[:：][ \t]*([^\r\n]+)'
 }
 
 def header_fields(b):
@@ -38,7 +38,7 @@ def header_fields(b):
             selected = b.first(matches)
             value = b.replace(selected, r'^[^:：]*[:：][ \t]*', "")
             # Stop at adjacent labels when OCR flattens the two header columns.
-            value = b.replace(value, r'(?i)[ \t]+(?:NV[ \t]+b[áa]n[ \t]+h[àa]ng|[ĐđDd]i[ệe]n[ \t]+tho[ạa]i|[ĐđDd][ịi]a[ \t]+ch[ỉi])[ \t]*[:：].*$', "")
+            value = b.replace(value, r'(?i)[ \t]+(?:NV[ \t]+b[áa]\p{M}*n[ \t]+h[àa]\p{M}*ng|[ĐđDd]i[ệeê]\p{M}*n[ \t]+tho[ạa]\p{M}*i|[ĐđDd][ịi]\p{M}*a[ \t]+ch[ỉi]\p{M}*)[ \t]*[:：].*$', "")
             value = b.replace(value, r'^\s+|\s+$', "")
             if key == "BillCode":
                 value = b.first(b.split(value, " "))
