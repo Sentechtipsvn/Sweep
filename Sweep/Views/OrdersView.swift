@@ -241,11 +241,11 @@ struct BillInboxView: View {
                         Text("Đây là danh sách xem trước. Chạm một hồ sơ, kiểm tra thông tin rồi bấm Nhập đơn vào Sweep.").font(.footnote).foregroundStyle(.secondary)
                         ForEach(result.candidates.filter { query.isEmpty || ($0.customer + " " + $0.filename).localizedStandardContains(query) }) { item in
                             if let old = store.ledger.orders.first(where: { $0.sourceID == item.id }) {
-                                Button { saved(old.id) } label: { Label("\(item.customer) · đã nhập, mở lại", systemImage: "checkmark.circle") }
+                                Button { saved(old.id) } label: { Label("\(item.customer) · đã nhập, mở lại", systemImage: "checkmark.circle") }.accessibilityIdentifier("bill.existing.\(item.id)")
                             } else {
                                 Button { selected = item } label: {
                                     VStack(alignment: .leading) { Text(item.customer); Text(VND.format(item.total)).font(.caption).foregroundStyle(.secondary) }
-                                }
+                                }.accessibilityIdentifier("bill.candidate.\(item.id)")
                             }
                         }
                     }

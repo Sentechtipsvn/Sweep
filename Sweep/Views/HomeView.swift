@@ -1,5 +1,10 @@
 import SwiftUI
 
+private enum AppRelease {
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
+    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—" }
+}
+
 struct HomeView: View {
     var body: some View {
         ScrollView {
@@ -25,7 +30,7 @@ struct HomeView: View {
                     .font(.headline)
                 Text("Sweep không có máy chủ tải ảnh lên, không cần tài khoản hay VPN. Ảnh chỉ tải từ iCloud khi Sếp cho phép hoặc chọn nhập ảnh đó.")
                     .font(.footnote).foregroundStyle(.secondary)
-                Text("BẢN THỬ NGHIỆM 0.2.0 · © Sentechtipsvn")
+                Text("BẢN THỬ NGHIỆM \(AppRelease.version) · © Sentechtipsvn")
                     .font(.caption2.weight(.medium)).foregroundStyle(.secondary)
             }
             .padding(20)
@@ -95,7 +100,7 @@ struct SettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section {
-                LabeledContent("Phiên bản", value: "0.2.0 (2) · thử nghiệm")
+                LabeledContent("Phiên bản", value: "\(AppRelease.version) (\(AppRelease.build)) · thử nghiệm")
                 LabeledContent("Phát triển", value: "© Sentechtipsvn")
                 Text("Sổ giao hàng hoạt động offline sau khi nhập đủ ảnh. Chia sẻ báo cáo do Sếp chọn ứng dụng và xác nhận gửi.")
                     .font(.footnote).foregroundStyle(.secondary)

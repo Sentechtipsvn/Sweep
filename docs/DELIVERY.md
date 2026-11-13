@@ -1,4 +1,4 @@
-# Sweep 0.2.0 — Sổ giao hàng
+# Sweep 0.2.1 — Sổ giao hàng
 
 ## Nhận đơn
 
@@ -8,7 +8,7 @@
 
 Mã phiếu trùng hoặc mã gói Bill đã nhập sẽ mở hồ sơ cũ, không ghi đè khoản thu. Ảnh nội bộ giống hệt một hồ sơ cũ bị chặn để kiểm tra; chỉ xác nhận dùng lại ảnh khi đó là phiếu khác hợp lệ. Một khách có hai phiếu khác nhau vẫn là hai hồ sơ.
 
-## Nhập Bill 3.2.0
+## Nhập Bill 3.2.0/3.3.0
 
 - Chọn **Nhập Bill → Chọn thư mục Bill**.
 - Trong Tệp, chọn `iCloud Drive/Shortcuts/SenTechTips_AnhDonHang`. Bên trong cần có `Ảnh Đơn Hàng`, `Đơn mới`, và/hoặc `orders.json`.
@@ -60,4 +60,8 @@ Trong **Sao lưu và khôi phục**, xuất `.sweepbackup` rồi chọn Lưu và
 
 Khôi phục kiểm tra schema, đường dẫn và hash tất cả ảnh trước khi thay sổ. Có xác nhận thay toàn bộ, không gộp. App giữ bản trước khôi phục trên máy, có nút xuất lại trong trang sao lưu. Việc mở bảng chia sẻ chưa chứng minh bản sao đã được lưu vào Tệp.
 
-OCR native, tự đọc nhóm Zalo, Share Extension, đồng bộ trực tiếp iCloud và nghiệp vụ hoàn tiền/tiền thừa chưa nằm trong 0.2.0. Các công cụ ảnh 0.1.0 vẫn ở tab Công cụ.
+Tự đọc nhóm Zalo, Share Extension, đồng bộ trực tiếp iCloud và nghiệp vụ hoàn tiền/tiền thừa chưa nằm trong 0.2.0. Các công cụ ảnh 0.1.0 vẫn ở tab Công cụ.
+
+### Bổ sung 0.2.1
+
+Tìm thấy hồ sơ chưa đồng nghĩa đã nhập sổ. Mở một hồ sơ, chờ OCR điền phần còn thiếu, đối chiếu mã cạnh Số:, tên tại Đơn vị:, tiền, địa chỉ và SĐT rồi bấm **Nhập đơn vào Sweep** ở dưới cùng. Thiếu mã/tên/tiền có lỗi rõ ràng; có thể nhập tay. Sau khi lưu, app mở hồ sơ đã lưu; danh sách và sổ vẫn còn khi khởi động lại. Không cần tạo thư mục tên Bill. Điện thoại cạnh NV bán hàng cần xác minh; ghi chú Trước 10h không thay thế địa chỉ bản đồ.

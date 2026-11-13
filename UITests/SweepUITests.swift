@@ -78,7 +78,7 @@ final class SweepUITests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--bill-ui-testing"]
         app.launch()
         app.buttons["orders.bill"].tap()
-        let candidate = app.buttons.containing(.staticText, identifier: "TIEM THU UI").firstMatch
+        let candidate = app.buttons["bill.candidate.bill:ui-fixture"]
         XCTAssertTrue(candidate.waitForExistence(timeout: 15)); candidate.tap()
         let code = app.textFields["intake.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 15))
@@ -99,7 +99,7 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Chưa tính công"].firstMatch.exists)
         attach(app, name: "10-bill-persisted-list")
         app.buttons["orders.bill"].tap()
-        XCTAssertTrue(app.buttons.containing(.staticText, identifier: "TIEM THU UI · đã nhập, mở lại").firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["bill.existing.bill:ui-fixture"].waitForExistence(timeout: 10))
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
