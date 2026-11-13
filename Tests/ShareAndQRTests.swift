@@ -19,16 +19,33 @@ final class ShareAndQRTests: XCTestCase {
         XCTAssertFalse(url.absoluteString.contains("Không"))
     }
 
-    func testQRUsesRemainderAndBlocksPaidCancelledNegativeAndExcessAmounts() throws {
+    func testQRUsesRemainderAndAllowsReissuingWithoutChangingPayments() throws {
         var order = DeliveryOrder(code: "DH-12", customer: "Test", total: 2_165_000)
         order.settlements = [Settlement(outcome: .delivered, mode: .mixed, cash: 600_000, bank: 1_500_000, note: "", at: Date())]
         XCTAssertEqual(order.remaining, 65_000)
+        XCTAssertEqual(VietQR.suggestedAmount(for: order), 65_000)
         XCTAssertNoThrow(try VietQR.url(account: account, order: order, amount: 65_000))
-        for amount in [Int64(-1), 0, 65_001, VND.maximum + 1] { XCTAssertThrowsError(try VietQR.url(account: account, order: order, amount: amount)) }
+        XCTAssertNoThrow(try VietQR.url(account: account, order: order, amount: order.total))
+        for amount in [Int64(-1), 0, order.total + 1, VND.maximum + 1] { XCTAssertThrowsError(try VietQR.url(account: account, order: order, amount: amount)) }
         order.voidReason = "Hủy phiếu"
         XCTAssertThrowsError(try VietQR.url(account: account, order: order, amount: 1))
         order.voidReason = nil; order.settlements[0].cash = 665_000
-        XCTAssertThrowsError(try VietQR.url(account: account, order: order, amount: 1))
+        let before = order
+        XCTAssertEqual(order.remaining, 0)
+        XCTAssertEqual(VietQR.suggestedAmount(for: order), 1_500_000)
+        XCTAssertNoThrow(try VietQR.url(account: account, order: order, amount: order.total))
+        XCTAssertEqual(order, before)
+    }
+
+    func testFullyVerifiedOrderStillHasAnAmountForShowingItsQRAgain() throws {
+        var order = DeliveryOrder(code: "DEMO", customer: "Test", total: 123_000)
+        let payment = Settlement(outcome: .delivered, mode: .bank, cash: 0, bank: 123_000, note: "", at: Date())
+        order.settlements = [payment]
+        order.bankChecks = [BankVerification(settlementID: payment.id, amount: payment.bank, note: "Đã kiểm tra")]
+        let before = order
+        XCTAssertEqual(VietQR.suggestedAmount(for: order), order.total)
+        XCTAssertNoThrow(try VietQR.url(account: account, order: order, amount: order.total))
+        XCTAssertEqual(order, before)
     }
 
     func testQRRejectsPathInjectionAndNormalizesTransferNote() throws {

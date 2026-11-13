@@ -31,8 +31,8 @@ struct OrderQRView: View {
                         MoneyInput(title: "Số tiền QR", text: $amount, identifier: "qr.amount")
                         Text("Nội dung: \(VietQR.transferNote(code: order.code))").font(.subheadline)
                         Button("Tạo QR chuyển khoản") { generate() }
-                            .accessibilityIdentifier("qr.generate").disabled(loading || order.remaining <= 0 || order.voidReason != nil)
-                        if order.remaining <= 0 { Text("Đơn đã ghi nhận đủ tiền.").foregroundStyle(.secondary) }
+                            .accessibilityIdentifier("qr.generate").disabled(loading || order.voidReason != nil)
+                        if order.remaining <= 0 { Text("Sổ đã ghi nhận đủ tiền; Sếp vẫn có thể xem hoặc tạo lại QR theo số tiền nhập. Khoản thu trong sổ giữ nguyên.").font(.caption).foregroundStyle(.secondary) }
                         if loading { ProgressView("Đang tạo VietQR…") }
                         if !problem.isEmpty { Text(problem).foregroundStyle(.orange); Button("Thử lại") { generate() }.disabled(loading) }
                         if let svg {
@@ -60,7 +60,7 @@ struct OrderQRView: View {
                 Button("Xong") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
             }
         }
-        .onAppear { if amount.isEmpty, let order { amount = String(order.remaining); generate() } }
+        .onAppear { if amount.isEmpty, let order { amount = String(VietQR.suggestedAmount(for: order)); generate() } }
         .onChange(of: amount) { _, value in if value != requestedAmount { invalidate() } }
         .onChange(of: store.ledger.settings.vietQR) { _, _ in invalidate() }
         .onChange(of: order) { _, _ in invalidate() }

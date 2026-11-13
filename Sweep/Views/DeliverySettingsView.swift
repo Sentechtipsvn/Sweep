@@ -24,7 +24,7 @@ struct DeliverySettingsView: View {
                 TextField("Mã ngân hàng / BIN, ví dụ VCB hoặc 970436", text: $bankID).textInputAutocapitalization(.characters).autocorrectionDisabled().accessibilityIdentifier("settings.bankID")
                 TextField("Số tài khoản nhận tiền", text: $accountNumber).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("settings.accountNumber")
                 TextField("Tên chủ tài khoản", text: $accountName).textInputAutocapitalization(.characters).accessibilityIdentifier("settings.accountName")
-                Text("Lưu một lần, sau đó mở QR chuyển khoản trong từng đơn. Số tiền mặc định là khoản còn lại theo ghi nhận; đơn chưa thu tiền sẽ dùng tổng đơn.").font(.caption).foregroundStyle(.secondary)
+                Text("Lưu một lần, sau đó mở QR chuyển khoản trong từng đơn. Ưu tiên khoản còn lại; nếu đã ghi nhận đủ tiền, vẫn tạo lại được QR mà không đổi sổ.").font(.caption).foregroundStyle(.secondary)
                 Text("Khi tạo QR, ngân hàng, số tài khoản, tên chủ tài khoản, số tiền và nội dung mã phiếu được gửi tới VietQR.io. Ảnh phiếu không được gửi. Tên chủ tài khoản do Sếp nhập, không phải kết quả xác minh từ ngân hàng.").font(.caption).foregroundStyle(.secondary)
             }
             Button("Lưu cấu hình") {

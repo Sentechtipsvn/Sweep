@@ -83,16 +83,21 @@ enum EvidenceFiles {
     }
     static func imageExtension(_ url: URL) throws -> String {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              CGImageSourceGetCount(source) == 1, let type = CGImageSourceGetType(source) as String?,
-              [UTType.jpeg.identifier, UTType.png.identifier, UTType.heic.identifier, UTType.heif.identifier].contains(type),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let w = properties[kCGImagePropertyPixelWidth] as? Int, let h = properties[kCGImagePropertyPixelHeight] as? Int,
-              w > 0, h > 0, w <= 120_000_000 / h,
-              CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 64, kCGImageSourceShouldCacheImmediately: true] as CFDictionary) != nil else {
-            throw DeliveryError.invalid("Chọn ảnh tĩnh JPEG/PNG/HEIC đọc được, tối đa 120 megapixel.")
+              CGImageSourceGetCount(source) > 0, let identifier = CGImageSourceGetType(source) as String?, let type = UTType(identifier) else {
+            throw DeliveryError.invalid("Dữ liệu nguồn chưa phải ảnh giải mã được; có thể nguồn chia sẻ cung cấp một dạng khác với tệp gốc.")
         }
-        return UTType(type)?.preferredFilenameExtension ?? "jpg"
+        let formats: [(UTType, String)] = [(.jpeg, "jpg"), (.png, "png"), (.heic, "heic"), (.heif, "heif")]
+        guard let ext = formats.first(where: { type.conforms(to: $0.0) })?.1 else { throw DeliveryError.invalid("Dạng ảnh nhận được là \(identifier); cần chuẩn hóa trước khi lưu.") }
+        if type.conforms(to: .png), CGImageSourceGetCount(source) > 1 { throw DeliveryError.invalid("Ảnh PNG động chưa được nhận làm phiếu. Chọn ảnh tĩnh.") }
+        let index = CGImageSourceGetPrimaryImageIndex(source)
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let w = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int64Value,
+              let h = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int64Value, w > 0, h > 0 else { throw DeliveryError.invalid("Chưa đọc được kích thước ảnh nguồn.") }
+        guard w <= 120_000_000 / h else { throw DeliveryError.invalid("Ảnh nguồn vượt 120 megapixel.") }
+        guard CGImageSourceCreateThumbnailAtIndex(source, index, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 64,
+            kCGImageSourceShouldCacheImmediately: true] as CFDictionary) != nil else { throw DeliveryError.invalid("Không giải mã được ảnh \(identifier) kích thước \(w)×\(h).") }
+        return ext
     }
     static func importImage(_ source: URL, role: EvidenceRole, directory: URL) throws -> DeliveryEvidence {
         let accessed = source.startAccessingSecurityScopedResource()

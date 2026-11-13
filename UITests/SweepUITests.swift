@@ -1,6 +1,23 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    func testRecordedTransferStillDisplaysQRCode() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--qr-ui-testing"]
+        app.launch()
+        let order = app.buttons["order.TEST-001"]
+        XCTAssertTrue(order.waitForExistence(timeout: 20)); order.tap()
+        reveal(app.buttons["order.qr"], in: app); app.buttons["order.qr"].tap()
+        let amount = app.textFields["qr.amount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        XCTAssertEqual(amount.value as? String, "2165000")
+        reveal(app.buttons["qr.generate"], in: app)
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 45))
+        waitUntil(app.buttons["qr.generate"], in: app) { $0.exists && $0.isEnabled }
+        attach(app, name: "qr-recorded-transfer-can-show-again")
+    }
+
     func testSharedImageReviewImportQRSetupAndRelaunch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

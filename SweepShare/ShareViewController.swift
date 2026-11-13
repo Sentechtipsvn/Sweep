@@ -50,13 +50,14 @@ final class ShareViewController: UIViewController {
         do {
             _ = try SharedInvoiceInbox.live() // Fail visibly if re-signing removed the group entitlement.
             let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }
-            let images = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) || $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+            var images = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) || $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) || $0.canLoadObject(ofClass: UIImage.self) }
+            if images.isEmpty, providers.count == 1, providers[0].hasItemConformingToTypeIdentifier(UTType.data.identifier) { images = providers }
             guard images.count == 1, let provider = images.first else { throw DeliveryError.invalid("Mỗi lần nhận một ảnh phiếu JPEG, PNG hoặc HEIC. Chọn ảnh trong Zalo rồi chia sẻ lại.") }
-            let url = try await Self.copyAttachment(provider)
+            let url = try await SharedInvoiceLoader.load(from: provider)
             guard !Task.isCancelled else { try? FileManager.default.removeItem(at: url); return }
             imageURL = url
             if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-               let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+               let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: 900
@@ -64,33 +65,6 @@ final class ShareViewController: UIViewController {
             status.text = "Gửi ảnh vào hộp thư Sweep. Khi mở Sweep, ảnh sẽ hiện để Sếp kiểm tra và nhập đơn."
             saveButton.isEnabled = true
         } catch { status.text = error.localizedDescription }
-    }
-
-    nonisolated private static func copyAttachment(_ provider: NSItemProvider) async throws -> URL {
-        let types = provider.registeredTypeIdentifiers
-        if let type = types.first(where: { UTType($0)?.conforms(to: .image) == true }) {
-            // Copy before the provider's callback returns: its temporary URL expires afterwards.
-            return try await withCheckedThrowingContinuation { continuation in
-                provider.loadFileRepresentation(forTypeIdentifier: type) { source, error in
-                    do {
-                        if let error { throw error }
-                        guard let source else { throw DeliveryError.invalid("Zalo chưa cung cấp được ảnh. Mở ảnh gốc rồi thử chia sẻ lại.") }
-                        let file = try EvidenceFiles.importImage(source, role: .invoice, directory: FileManager.default.temporaryDirectory)
-                        continuation.resume(returning: FileManager.default.temporaryDirectory.appendingPathComponent(file.filename))
-                    } catch { continuation.resume(throwing: error) }
-                }
-            }
-        }
-        return try await withCheckedThrowingContinuation { continuation in
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
-                do {
-                    if let error { throw error }
-                    guard let source = item as? URL, source.isFileURL else { throw DeliveryError.invalid("Nội dung chia sẻ chưa phải ảnh phiếu.") }
-                    let file = try EvidenceFiles.importImage(source, role: .invoice, directory: FileManager.default.temporaryDirectory)
-                    continuation.resume(returning: FileManager.default.temporaryDirectory.appendingPathComponent(file.filename))
-                } catch { continuation.resume(throwing: error) }
-            }
-        }
     }
 
     @objc private func saveShare() {

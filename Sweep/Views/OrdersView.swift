@@ -84,7 +84,7 @@ struct OrdersView: View {
     private func refreshInbox() async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--shared-ui-testing") {
-            do { try store.installSharedUITestFixture() } catch { store.message = error.localizedDescription }
+            do { try await store.installSharedUITestFixture() } catch { store.message = error.localizedDescription }
         }
         #endif
         await inbox.reload()

@@ -17,6 +17,11 @@ struct VietQRAccount: Codable, Equatable {
 }
 
 enum VietQR {
+    static func suggestedAmount(for order: DeliveryOrder) -> Int64 {
+        if order.remaining > 0 { return order.remaining }
+        let awaitingBankCheck = order.bank - order.verifiedBank
+        return awaitingBankCheck > 0 ? awaitingBankCheck : order.total
+    }
     static func transferNote(code: String) -> String {
         let folded = code.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "vi_VN"))
             .replacingOccurrences(of: "đ", with: "d").replacingOccurrences(of: "Đ", with: "D").uppercased()
@@ -29,8 +34,8 @@ enum VietQR {
 
     static func url(account: VietQRAccount, order: DeliveryOrder, amount: Int64) throws -> URL {
         try account.validate(); try VND.check(amount)
-        guard order.voidReason == nil, amount > 0, amount <= order.remaining else {
-            throw DeliveryError.invalid("Số tiền QR phải lớn hơn 0 và không vượt khoản còn lại của đơn đang hoạt động.")
+        guard order.voidReason == nil, amount > 0, amount <= order.total else {
+            throw DeliveryError.invalid("Số tiền QR phải lớn hơn 0 và không vượt tổng đơn đang hoạt động. Tạo lại QR không sửa khoản thu đã ghi nhận.")
         }
         var parts = URLComponents()
         parts.scheme = "https"; parts.host = "img.vietqr.io"
