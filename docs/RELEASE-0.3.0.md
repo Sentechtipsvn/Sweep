@@ -26,7 +26,9 @@ Không chuyển sổ đang dùng sang container mới: SQLite, ảnh chứng t�
 
 ## Phạm vi kiểm chứng
 
-Đã bổ sung test logic URL/số tiền, tương thích dữ liệu cũ, inbox sống qua lần mở mới, dữ liệu lỗi không che mục tốt; đồng thời cấu hình CI build cả app/extension và thao tác nhập OCR trên simulator. Các test Swift/Xcode và simulator chưa chạy: môi trường hiện tại không có Apple SDK, và bước đưa mã lên GitHub đang chờ chủ dự án cho phép. Test fixture dùng inbox riêng, không chứng minh được provisioning thật hay menu Zalo trên iPhone.
+Đã chạy đạt 32 kiểm thử Swift cho logic URL/số tiền, tương thích dữ liệu cũ, inbox sống qua lần mở mới và dữ liệu lỗi không che mục tốt. Xcode 16.4 build thành công bản Release arm64 cho iPhone, gồm app và SweepShare.appex; IPA 0.3.0 (4) đã được tạo và kiểm tra checksum/CRC, bundle ID và cấu hình App Group của hai target. IPA chưa ký.
+
+Luồng nhập OCR trên simulator nằm trong CI riêng và còn đang chạy tại thời điểm bàn giao IPA: [lượt kiểm thử](https://github.com/Sentechtipsvn/Sweep/actions/runs/43453650463). Không coi build thành công là đã xác nhận thao tác giao diện. Test fixture dùng inbox riêng, không chứng minh được provisioning thật hay menu Zalo trên iPhone. Mã nguồn tạo IPA: c1d1262aa304585674802368c06fe4da2d5cf088.
 
 Đã kiểm tra tại môi trường soạn mã: cú pháp 37 tệp Swift bằng parser, cấu trúc plist/YAML và whitespace. Đã gọi Quick Link SVG bằng tài khoản ví dụ công khai trong tài liệu VietQR, nhận HTTP 200, render ảnh và giải mã QR để đối chiếu đúng BIN 970415, tài khoản ví dụ 113366668888, số tiền 790000 và nội dung TT DON 3877. Không dùng dữ liệu tài khoản của chủ dự án và không thực hiện chuyển tiền. Parser không thay thế type-check/build Swift.
 
