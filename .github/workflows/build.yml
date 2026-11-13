@@ -37,14 +37,14 @@ jobs:
           mkdir -p dist/Payload
           cp -R build/Build/Products/Release-iphoneos/Sweep.app dist/Payload/
           cd dist
-          /usr/bin/zip -qr Sweep-0.2.1-unsigned.ipa Payload
-          shasum -a 256 Sweep-0.2.1-unsigned.ipa > SHA256.txt
+          /usr/bin/zip -qr Sweep-0.3.0-unsigned.ipa Payload
+          shasum -a 256 Sweep-0.3.0-unsigned.ipa > SHA256.txt
       - name: Upload phone-test beta
         uses: actions/upload-artifact@v4
         with:
-          name: Sweep-0.2.1-beta-unsigned
+          name: Sweep-0.3.0-beta-unsigned
           path: |
-            dist/Sweep-0.2.1-unsigned.ipa
+            dist/Sweep-0.3.0-unsigned.ipa
             dist/SHA256.txt
           retention-days: 14
       - name: Build and validate Bill shortcut

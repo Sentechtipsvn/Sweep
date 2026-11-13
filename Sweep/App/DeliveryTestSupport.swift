@@ -20,6 +20,15 @@ extension DeliveryStore {
 }
 
 extension DeliveryStore {
+    func installSharedUITestFixture() throws {
+        guard ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing") else { return }
+        let marker = root.appendingPathComponent("shared-fixture-sent")
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        let source = try billUITestResult().candidates[0].image!
+        _ = try SharedInvoiceInbox.live().add(source)
+        try Data().write(to: marker)
+    }
+
     func billUITestResult() throws -> BillImportResult {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 1400, height: 800)).image { context in
             UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 1400, height: 800))

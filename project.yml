@@ -6,8 +6,9 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.2.1"
-    CURRENT_PROJECT_VERSION: "3"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "4"
+    SWEEP_APP_GROUP: group.com.sentechtipsvn.sweep
     CODE_SIGNING_ALLOWED: NO
 targets:
   Sweep:
@@ -17,12 +18,33 @@ targets:
       - path: Sweep
         excludes:
           - Info.plist
+          - Sweep.entitlements
+    dependencies:
+      - target: SweepShare
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sentechtipsvn.sweep
         INFOPLIST_FILE: Sweep/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sweep/Sweep.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  SweepShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SweepShare
+        excludes: [Info.plist, SweepShare.entitlements]
+      - path: Sweep/Core
+      - path: Sweep/PrivacyInfo.xcprivacy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sentechtipsvn.sweep.share
+        INFOPLIST_FILE: SweepShare/Info.plist
+        CODE_SIGN_ENTITLEMENTS: SweepShare/SweepShare.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
   SweepUITests:
     type: bundle.ui-testing
     platform: iOS

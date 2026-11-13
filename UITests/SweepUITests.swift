@@ -1,6 +1,32 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    func testSharedImageReviewImportQRSetupAndRelaunch() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--shared-ui-testing"]
+        app.launch()
+        let code = app.textFields["intake.code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 20))
+        let populated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "TEST-7856"), object: code)
+        XCTAssertEqual(XCTWaiter.wait(for: [populated], timeout: 40), .completed)
+        let save = app.buttons["intake.save"]
+        waitUntil(save, in: app) { $0.exists && $0.isEnabled }
+        attach(app, name: "share-01-review")
+        save.tap()
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 20))
+        reveal(app.buttons["order.qr"], in: app); app.buttons["order.qr"].tap()
+        let setup = app.buttons["Thiết lập tài khoản VietQR"]
+        XCTAssertTrue(setup.waitForExistence(timeout: 10))
+        attach(app, name: "share-02-qr-needs-account")
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--shared-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["order.TEST-7856"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["orders.shared"].exists)
+        attach(app, name: "share-03-persisted")
+    }
+
     func testLaunchNavigationAndPermissionEntry() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -77,7 +103,7 @@ final class SweepUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--bill-ui-testing"]
         app.launch()
-        app.buttons["orders.bill"].tap()
+        app.buttons["orders.receive"].tap(); app.buttons["orders.bill"].tap()
         let candidate = app.buttons["bill.candidate.bill:ui-fixture"]
         XCTAssertTrue(candidate.waitForExistence(timeout: 15)); candidate.tap()
         let code = app.textFields["intake.code"]

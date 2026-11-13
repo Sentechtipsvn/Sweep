@@ -32,7 +32,7 @@ struct OrderDetailView: View {
                                 if !order.address.isEmpty, let url = mapURL(order.address) {
                                     Link(destination: url) { Label("Đường", systemImage: "map") }
                                 }
-                                NavigationLink { BankCompanyView() } label: { Label("QR công ty", systemImage: "qrcode") }
+                                NavigationLink { OrderQRView(id: id) } label: { Label("QR chuyển khoản", systemImage: "qrcode") }.accessibilityIdentifier("order.qr")
                             }.font(.subheadline).buttonStyle(.bordered)
                             if !order.phone.isEmpty { Text(order.phone).font(.caption).textSelection(.enabled) }
                             if !order.address.isEmpty { Text(order.address).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }

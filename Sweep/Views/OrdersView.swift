@@ -4,6 +4,9 @@ import QuickLook
 
 struct OrdersView: View {
     @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var inbox = SharedInboxStore()
+    @State private var sharedInbox = false
     @State private var path: [UUID] = []
     @State private var query = ""
     @State private var filter = "Tất cả"
@@ -23,6 +26,11 @@ struct OrdersView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
+                if !inbox.items.isEmpty {
+                    Section {
+                        Button { sharedInbox = true } label: { Label("\(inbox.items.count) ảnh được chia sẻ · nhận đơn", systemImage: "tray.and.arrow.down.fill") }.accessibilityIdentifier("orders.shared")
+                    }
+                }
                 Section {
                     Picker("Bộ lọc", selection: $filter) { ForEach(["Tất cả", "Đang giao", "Cần báo cáo"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
                     Toggle("Mọi ngày", isOn: $allDates)
@@ -32,7 +40,7 @@ struct OrdersView: View {
                 else if visible.isEmpty {
                     VStack(spacing: 16) {
                         Label(query.isEmpty ? "Chưa có đơn đã lưu" : "Không tìm thấy đơn", systemImage: "shippingbox").font(.headline)
-                        Text("Chọn thư mục → mở hồ sơ → kiểm tra → Nhập đơn vào Sweep.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Text("Chia sẻ ảnh phiếu từ Zalo vào Sweep, hoặc chọn ảnh bằng nút +. Kho Bill cũ vẫn nhập được.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         Button("Nhập đơn từ Bill") { bill = true }.buttonStyle(.borderedProminent)
                     }.frame(maxWidth: .infinity).padding(.vertical, 28)
                 }
@@ -57,13 +65,30 @@ struct OrdersView: View {
             .navigationTitle("Đơn hàng")
             .searchable(text: $query, prompt: "Tên khách, mã phiếu, số điện thoại")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button { bill = true } label: { Label("Nhập Bill", systemImage: "tray.and.arrow.down") }.accessibilityIdentifier("orders.bill").disabled(store.busy || store.blocked) }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button("Ảnh được chia sẻ", systemImage: "tray.and.arrow.down") { sharedInbox = true }
+                        Button("Nhập từ kho Bill", systemImage: "folder") { bill = true }.accessibilityIdentifier("orders.bill")
+                    } label: { Label("Nhận ảnh", systemImage: "tray.and.arrow.down") }.accessibilityIdentifier("orders.receive").disabled(store.busy || store.blocked)
+                }
                 ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) }
             }
             .navigationDestination(for: UUID.self) { OrderDetailView(id: $0) }
             .sheet(isPresented: $newOrder, onDismiss: openSavedOrder) { OrderIntakeView { id in savedOrder = id; newOrder = false } }
             .sheet(isPresented: $bill, onDismiss: openSavedOrder) { BillInboxView { id in savedOrder = id; bill = false } }
+            .sheet(isPresented: $sharedInbox, onDismiss: openSavedOrder) { SharedInboxView(inbox: inbox) { id in savedOrder = id; sharedInbox = false } }
+            .task { await refreshInbox() }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refreshInbox() } } }
         }
+    }
+    private func refreshInbox() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--shared-ui-testing") {
+            do { try store.installSharedUITestFixture() } catch { store.message = error.localizedDescription }
+        }
+        #endif
+        await inbox.reload()
+        if !inbox.items.isEmpty, !newOrder, !bill, !sharedInbox, !store.busy, !store.blocked { sharedInbox = true }
     }
     private func openSavedOrder() {
         guard let id = savedOrder else { return }
@@ -74,6 +99,7 @@ struct OrdersView: View {
 
 struct OrderIntakeView: View {
     var candidate: BillCandidate? = nil
+    var shared: SharedInvoiceInbox.Item? = nil
     let saved: (UUID) -> Void
     @EnvironmentObject private var store: DeliveryStore
     @Environment(\.dismiss) private var dismiss
@@ -88,6 +114,7 @@ struct OrderIntakeView: View {
     @State private var readingRequest = UUID()
     @State private var readingStatus = ""
     @State private var validation = ""
+    @State private var duplicateID: UUID?
     @State private var hasInvoiceDate = false
     @State private var invoiceDate = Date()
     @State private var signed = false
@@ -95,7 +122,7 @@ struct OrderIntakeView: View {
     @State private var allowRepeatedImage = false
     @State private var image: ImportedImage?
     @State private var preview: URL?
-    private var source: URL? { image?.url ?? candidate?.image }
+    private var source: URL? { image?.url ?? shared?.image ?? candidate?.image }
     var body: some View {
         NavigationStack {
             Form {
@@ -138,7 +165,12 @@ struct OrderIntakeView: View {
                         Text(candidate.note.isEmpty ? "Gói nhập không xác nhận ngày ký. Sếp kiểm tra trước khi tính công." : candidate.note).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if !validation.isEmpty { Section { Text(validation).foregroundStyle(.red) } }
+                if !validation.isEmpty {
+                    Section {
+                        Text(validation).foregroundStyle(.red)
+                        if let duplicateID { Button("Đây là đơn đã có: bỏ ảnh chờ và mở hồ sơ") { saved(duplicateID) } }
+                    }
+                }
             }
             .navigationTitle("Nhận đơn").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
@@ -169,6 +201,7 @@ struct OrderIntakeView: View {
         let request = UUID(); readingRequest = request; reading = true
         defer { if readingRequest == request { reading = false } }
         do {
+            if let shared, image == nil { try await Task.detached { try EvidenceFiles.verify(shared.evidence, directory: shared.directory) }.value }
             let fields = try await Task.detached(priority: .userInitiated) { try InvoiceOCR.read(url) }.value
             guard !Task.isCancelled, source == url, readingRequest == request else { return }
             if code.isEmpty { code = fields.code }
@@ -183,17 +216,25 @@ struct OrderIntakeView: View {
             if customer.isEmpty { missing.append("tên tại Đơn vị:") }
             if total.isEmpty { missing.append("tổng tiền") }
             readingStatus = missing.isEmpty ? "Đã điền gợi ý. Kiểm tra với ảnh, rồi bấm Nhập đơn vào Sweep." : "Chưa đọc rõ " + missing.joined(separator: ", ") + ". Sếp điền tay phần còn thiếu."
-            if let value = fields.total, let current = try? VND.parse(total), current != value { readingStatus += " Tổng OCR khác dữ liệu Bill; em giữ tiền Bill để Sếp đối chiếu." }
+            if let value = fields.total, let current = try? VND.parse(total), current != value { readingStatus += " Tổng OCR khác số tiền đang điền; em giữ số tiền hiện tại để Sếp đối chiếu." }
         } catch { readingStatus = "Chưa đọc được ảnh: " + error.localizedDescription + " Sếp có thể điền tay." }
     }
     private func save() async {
-        validation = ""
+        validation = ""; duplicateID = nil
         guard !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !customer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             validation = "Điền mã cạnh Số: và tên tại Đơn vị: trước khi nhập."; return
         }
         do {
             var order = DeliveryOrder(code: code.trimmingCharacters(in: .whitespacesAndNewlines), customer: customer.trimmingCharacters(in: .whitespacesAndNewlines), total: try VND.parse(total))
+            if let shared {
+                if let old = store.ledger.orders.first(where: { $0.sourceID == shared.sourceID }) { saved(old.id); return }
+                if let old = store.ledger.orders.first(where: { DeliveryOrder.normalizedCode($0.code) == DeliveryOrder.normalizedCode(order.code) }) {
+                    duplicateID = old.id; validation = "Mã \(old.code) đã có: \(old.customer), \(VND.format(old.total)). Ảnh chờ vẫn được giữ. Kiểm tra lại mã hoặc xác nhận đây là đơn cũ."; return
+                }
+                try await Task.detached { try EvidenceFiles.verify(shared.evidence, directory: shared.directory) }.value
+                order.sourceID = shared.sourceID; order.sourceCreatedAt = shared.receivedAt
+            }
             order.phone = phone; order.address = address; order.invoiceAt = hasInvoiceDate ? invoiceDate : nil
             order.note = [deliveryNote.isEmpty ? "" : "Giao hàng: \(deliveryNote)", phone.isEmpty ? "" : "Điện thoại trên phiếu cần xác minh người nhận: \(phone)"].filter { !$0.isEmpty }.joined(separator: "\n")
             if let candidate {

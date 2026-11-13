@@ -191,6 +191,7 @@ struct DeliverySettings: Codable, Equatable {
     var company = ""
     var account = ""
     var qr: DeliveryEvidence?
+    var vietQR: VietQRAccount?
 }
 struct DeliveryAudit: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -331,6 +332,7 @@ struct DeliveryLedger: Codable, Equatable {
     func validate() throws {
         guard schema == 1, orders.count <= 50_000, handovers.count <= 100_000, Set(orders.map(\.id)).count == orders.count else { throw DeliveryError.invalid("Sổ không đúng phiên bản hoặc trùng ID.") }
         try VND.check(settings.fee)
+        try settings.vietQR?.validate()
         guard Set(orders.map { DeliveryOrder.normalizedCode($0.code) }).count == orders.count else { throw DeliveryError.invalid("Sổ có mã phiếu trùng.") }
         let sources = orders.compactMap(\.sourceID)
         guard Set(sources).count == sources.count else { throw DeliveryError.invalid("Sổ có gói nhập trùng.") }
