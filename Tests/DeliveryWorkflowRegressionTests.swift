@@ -117,7 +117,9 @@ final class DeliveryWorkflowRegressionTests: XCTestCase {
         XCTAssertEqual(items.first { $0.name == "directionsmode" }?.value, "driving")
         XCTAssertTrue(native.absoluteString.contains("%2B"))
         let web = try XCTUnwrap(DeliveryDirections.googleMaps(address: address, native: false))
-        XCTAssertEqual(web.host, "www.google.com"); XCTAssertEqual(web.path, "/maps/dir/")
+        XCTAssertEqual(web.host, "www.google.com")
+        XCTAssertTrue(web.absoluteString.hasPrefix("https://www.google.com/maps/dir/?"))
+        XCTAssertEqual(URLComponents(url: web, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "destination" }?.value, address.trimmingCharacters(in: .whitespaces))
         XCTAssertNil(DeliveryDirections.googleMaps(address: " \n"))
     }
 
