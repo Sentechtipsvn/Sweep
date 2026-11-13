@@ -24,3 +24,5 @@ Thông báo cũ gộp mọi lỗi đọc ảnh vào “JPEG/PNG/HEIC tối đa 1
 Thêm kiểm thử JPEG có metadata/tên tệp chung, Data provider, tệp lỗi rồi fallback Data, ưu tiên JPEG thay TIFF, chuẩn hóa TIFF và từ chối dữ liệu hỏng. Bổ sung QR khi khoản còn lại bằng 0 và khi CK đã đối soát. Fixture simulator nhận UIImage qua cùng loader; thêm UI test QR bằng tài khoản ví dụ công khai của tài liệu VietQR. Không dùng tài khoản thật hoặc ảnh hóa đơn của người dùng trong CI.
 
 Kết quả chỉ được xác nhận sau khi CI hoàn tất. Tệp JPEG gốc trong Zalo và Share Sheet trên iPhone vẫn cần thử lại sau khi cài. Không gỡ app chứa sổ; ký cài đè và giữ tiện ích mở rộng như trước.
+
+Đã xác nhận cho build `e0275db45d40082eb9cd327249a1e277eaf81c5b`: 43 kiểm thử Swift đạt, Xcode 16.4 build Release arm64 đạt, đóng gói và xác minh App Group trong chữ ký của cả hai executable đạt. IPA 0.3.2 (6) tải về có CRC/SHA256 đúng; SHA256 `836271d7a97f624b3914ca75c1d362207f24002c63f3ffae73e846a498d98487`. [Lượt CI](https://github.com/Sentechtipsvn/Sweep/actions/runs/43468132064) có bài UI riêng còn chạy tại thời điểm bàn giao. Chưa xác nhận đọc đúng tệp cụ thể từ Zalo trên iPhone của người dùng.
