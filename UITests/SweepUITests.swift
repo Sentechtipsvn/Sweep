@@ -72,6 +72,36 @@ final class SweepUITests: XCTestCase {
         attach(app, name: "07-persisted-partial-settlement")
     }
 
+    func testBillPreviewOCRImportAndRelaunch() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--bill-ui-testing"]
+        app.launch()
+        app.buttons["orders.bill"].tap()
+        let candidate = app.buttons.containing(.staticText, identifier: "TIEM THU UI").firstMatch
+        XCTAssertTrue(candidate.waitForExistence(timeout: 15)); candidate.tap()
+        let code = app.textFields["intake.code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 15))
+        let populated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "TEST-7856"), object: code)
+        XCTAssertEqual(XCTWaiter.wait(for: [populated], timeout: 40), .completed)
+        let save = app.buttons["intake.save"]
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: save)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        attach(app, name: "08-bill-ocr-review")
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Mã phiếu"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["TEST-7856"].firstMatch.exists)
+        attach(app, name: "09-bill-saved-order")
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--bill-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["order.TEST-7856"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Chưa tính công"].firstMatch.exists)
+        attach(app, name: "10-bill-persisted-list")
+        app.buttons["orders.bill"].tap()
+        XCTAssertTrue(app.buttons.containing(.staticText, identifier: "TIEM THU UI · đã nhập, mở lại").firstMatch.waitForExistence(timeout: 10))
+    }
+
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<8 {
             if element.exists && element.isHittable { return }

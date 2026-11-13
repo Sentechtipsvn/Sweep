@@ -11,6 +11,7 @@ struct OrdersView: View {
     @State private var day = Date()
     @State private var newOrder = false
     @State private var bill = false
+    @State private var savedOrder: UUID?
     private var visible: [DeliveryOrder] {
         store.ledger.orders.filter { order in
             let matches = query.isEmpty || (order.customer + " " + order.code + " " + order.phone).localizedStandardContains(query)
@@ -29,8 +30,11 @@ struct OrdersView: View {
                 }
                 if store.blocked { Text("Sổ chưa mở được. Dữ liệu cũ được giữ nguyên; xem thông báo lỗi.").foregroundStyle(.red) }
                 else if visible.isEmpty {
-                    ContentUnavailableView(query.isEmpty ? "Chưa có đơn trong bộ lọc" : "Không tìm thấy đơn", systemImage: "shippingbox",
-                        description: Text("Nhận phiếu từ Ảnh/Tệp hoặc nhập thư mục Bill. Đơn nháp chưa tính công."))
+                    VStack(spacing: 16) {
+                        Label(query.isEmpty ? "Chưa có đơn đã lưu" : "Không tìm thấy đơn", systemImage: "shippingbox").font(.headline)
+                        Text("Chọn thư mục → mở hồ sơ → kiểm tra → Nhập đơn vào Sweep.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button("Nhập đơn từ Bill") { bill = true }.buttonStyle(.borderedProminent)
+                    }.frame(maxWidth: .infinity).padding(.vertical, 28)
                 }
                 ForEach(visible) { order in
                     NavigationLink(value: order.id) {
@@ -57,9 +61,14 @@ struct OrdersView: View {
                 ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) }
             }
             .navigationDestination(for: UUID.self) { OrderDetailView(id: $0) }
-            .sheet(isPresented: $newOrder) { OrderIntakeView { id in newOrder = false; path.append(id) } }
-            .sheet(isPresented: $bill) { BillInboxView { id in bill = false; path.append(id) } }
+            .sheet(isPresented: $newOrder, onDismiss: openSavedOrder) { OrderIntakeView { id in savedOrder = id; newOrder = false } }
+            .sheet(isPresented: $bill, onDismiss: openSavedOrder) { BillInboxView { id in savedOrder = id; bill = false } }
         }
+    }
+    private func openSavedOrder() {
+        guard let id = savedOrder else { return }
+        savedOrder = nil; query = ""; filter = "Tất cả"; allDates = true
+        path.append(id)
     }
 }
 
@@ -73,6 +82,12 @@ struct OrderIntakeView: View {
     @State private var total = ""
     @State private var phone = ""
     @State private var address = ""
+    @State private var deliveryNote = ""
+    @State private var initialized = false
+    @State private var reading = false
+    @State private var readingRequest = UUID()
+    @State private var readingStatus = ""
+    @State private var validation = ""
     @State private var hasInvoiceDate = false
     @State private var invoiceDate = Date()
     @State private var signed = false
@@ -90,14 +105,20 @@ struct OrderIntakeView: View {
                         do { image = try await Task.detached { try ImportedImage.copy(from: url) }.value }
                         catch { store.message = error.localizedDescription }
                     }
-                    Text("Sweep giữ bản sao để mở offline. Kiểm tra thông tin với ảnh trước khi lưu.").font(.caption).foregroundStyle(.secondary)
+                    Text("Ảnh chưa được nhập vào sổ. Kiểm tra bên dưới rồi bấm Nhập đơn vào Sweep.").font(.caption).foregroundStyle(.secondary)
+                    if reading { ProgressView("Đang đọc thông tin trên phiếu…") }
+                    if !readingStatus.isEmpty { Text(readingStatus).font(.caption).foregroundStyle(.secondary) }
+                    if let source { Button("Đọc lại thông tin còn thiếu từ ảnh") { Task { await readInvoice(source) } }.disabled(reading) }
                 }
                 Section("Hồ sơ") {
-                    TextField("Mã phiếu duy nhất", text: $code).textInputAutocapitalization(.characters).accessibilityIdentifier("intake.code")
-                    TextField("Tên khách", text: $customer).accessibilityIdentifier("intake.customer")
+                    TextField("Mã cạnh “Số:” trên phiếu (bắt buộc)", text: $code).textInputAutocapitalization(.characters).accessibilityIdentifier("intake.code")
+                    TextField("Tên tiệm tại “Đơn vị:”", text: $customer).accessibilityIdentifier("intake.customer")
                     MoneyInput(title: "Tổng đơn", text: $total, identifier: "intake.total")
-                    TextField("Điện thoại (tùy chọn)", text: $phone).keyboardType(.phonePad)
+                    TextField("Điện thoại trên phiếu (tùy chọn)", text: $phone).keyboardType(.phonePad)
+                    if !phone.isEmpty { Text("Số in cạnh NV bán hàng có thể là nhân viên bán hàng. Xác minh trước khi gọi khách.").font(.caption).foregroundStyle(.orange) }
                     TextField("Địa chỉ (tùy chọn)", text: $address)
+                    TextField("Ghi chú giao hàng / giờ hẹn", text: $deliveryNote)
+                    Text("Mã phiếu, tên tiệm và tổng tiền là bắt buộc. OCR là gợi ý; đối chiếu ảnh trước khi nhập.").font(.caption).foregroundStyle(.secondary)
                     Toggle("Có ngày trên hóa đơn", isOn: $hasInvoiceDate)
                     if hasInvoiceDate { DatePicker("Ngày hóa đơn", selection: $invoiceDate, displayedComponents: .date) }
                 }
@@ -117,20 +138,64 @@ struct OrderIntakeView: View {
                         Text(candidate.note.isEmpty ? "Gói nhập không xác nhận ngày ký. Sếp kiểm tra trước khi tính công." : candidate.note).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Button(signed ? "Lưu và ghi công ký nhận" : "Lưu đơn nháp") { Task { await save() } }
-                    .accessibilityIdentifier("intake.save").disabled(store.busy || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || customer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || total.isEmpty)
+                if !validation.isEmpty { Section { Text(validation).foregroundStyle(.red) } }
             }
             .navigationTitle("Nhận đơn").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .quickLookPreview($preview)
-            .onAppear { if let candidate, customer.isEmpty { customer = candidate.customer; total = String(candidate.total) } }
+            .onAppear {
+                guard !initialized else { return }; initialized = true
+                if let candidate {
+                    customer = candidate.customer; total = String(candidate.total); code = candidate.code
+                    phone = candidate.phone; address = candidate.address; deliveryNote = candidate.deliveryNote
+                    if let date = candidate.invoiceDate { invoiceDate = date; hasInvoiceDate = true }
+                }
+            }
+            .task(id: source) { if let source { await readInvoice(source) } }
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Xong") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }.accessibilityIdentifier("keyboard.done") } }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 6) {
+                    if !validation.isEmpty { Text(validation).font(.caption).foregroundStyle(.red) }
+                    Button(signed ? "Nhập đơn và ghi công ký nhận" : "Nhập đơn vào Sweep") { Task { await save() } }
+                        .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).controlSize(.large)
+                        .accessibilityIdentifier("intake.save").disabled(store.busy || reading)
+                }.padding().frame(maxWidth: .infinity).background(.bar)
+            }
             .disabled(store.busy)
         }
     }
+    @MainActor private func readInvoice(_ url: URL) async {
+        let request = UUID(); readingRequest = request; reading = true
+        defer { if readingRequest == request { reading = false } }
+        do {
+            let fields = try await Task.detached(priority: .userInitiated) { try InvoiceOCR.read(url) }.value
+            guard !Task.isCancelled, source == url, readingRequest == request else { return }
+            if code.isEmpty { code = fields.code }
+            if customer.isEmpty { customer = fields.customer }
+            if total.isEmpty || (candidate == nil && total == "0") { if let value = fields.total { total = String(value) } }
+            if phone.isEmpty { phone = fields.phone }
+            if address.isEmpty { address = fields.address }
+            if deliveryNote.isEmpty { deliveryNote = fields.deliveryNote }
+            if !hasInvoiceDate, let date = fields.invoiceDate { invoiceDate = date; hasInvoiceDate = true }
+            var missing: [String] = []
+            if code.isEmpty { missing.append("mã cạnh Số:") }
+            if customer.isEmpty { missing.append("tên tại Đơn vị:") }
+            if total.isEmpty { missing.append("tổng tiền") }
+            readingStatus = missing.isEmpty ? "Đã điền gợi ý. Kiểm tra với ảnh, rồi bấm Nhập đơn vào Sweep." : "Chưa đọc rõ " + missing.joined(separator: ", ") + ". Sếp điền tay phần còn thiếu."
+            if let value = fields.total, let current = try? VND.parse(total), current != value { readingStatus += " Tổng OCR khác dữ liệu Bill; em giữ tiền Bill để Sếp đối chiếu." }
+        } catch { readingStatus = "Chưa đọc được ảnh: " + error.localizedDescription + " Sếp có thể điền tay." }
+    }
     private func save() async {
+        validation = ""
+        guard !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !customer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            validation = "Điền mã cạnh Số: và tên tại Đơn vị: trước khi nhập."; return
+        }
         do {
             var order = DeliveryOrder(code: code.trimmingCharacters(in: .whitespacesAndNewlines), customer: customer.trimmingCharacters(in: .whitespacesAndNewlines), total: try VND.parse(total))
             order.phone = phone; order.address = address; order.invoiceAt = hasInvoiceDate ? invoiceDate : nil
+            order.note = [deliveryNote.isEmpty ? "" : "Giao hàng: \(deliveryNote)", phone.isEmpty ? "" : "Điện thoại trên phiếu cần xác minh người nhận: \(phone)"].filter { !$0.isEmpty }.joined(separator: "\n")
             if let candidate {
                 guard order.total >= candidate.cash + candidate.bank else { throw DeliveryError.invalid("Tổng sửa thấp hơn khoản thu cũ. Kiểm tra sổ trước khi nhập.") }
                 order.sourceID = candidate.id; order.sourceCreatedAt = candidate.createdAt; order.sourceSnapshot = candidate.sourceSnapshot
@@ -141,7 +206,7 @@ struct OrderIntakeView: View {
                 }
             }
             if let id = await store.create(order, image: source, signedAt: signed ? signedAt : nil, allowRepeatedImage: allowRepeatedImage) { saved(id) }
-        } catch { store.message = error.localizedDescription }
+        } catch { validation = error.localizedDescription }
     }
 }
 
@@ -158,6 +223,8 @@ struct BillInboxView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var folderPicker = false
     @State private var lease: BillFolderLease?
+    @State private var selected: BillCandidate?
+    @State private var importedID: UUID?
     @State private var result: BillImportResult?
     @State private var loading = false
     @State private var query = ""
@@ -165,17 +232,18 @@ struct BillInboxView: View {
         NavigationStack {
             List {
                 Section {
-                    Button("Chọn thư mục Bill") { folderPicker = true }
+                    Button("Chọn SenTechTips_AnhDonHang") { folderPicker = true }
                     Text("Trong Tệp: iCloud Drive → Shortcuts → SenTechTips_AnhDonHang. Sweep chỉ đọc, giữ sổ và ảnh bên Bill nguyên trạng. Mỗi hồ sơ được xem trước rồi Sếp xác nhận nhập.").font(.footnote).foregroundStyle(.secondary)
                     if loading { ProgressView("Đang đọc gói Bill…") }
                 }
                 if let result {
-                    Section("\(result.candidates.count) hồ sơ tìm thấy") {
+                    Section("\(result.candidates.count) hồ sơ tìm thấy · \(result.candidates.filter { item in store.ledger.orders.contains { $0.sourceID == item.id } }.count) đã nhập") {
+                        Text("Đây là danh sách xem trước. Chạm một hồ sơ, kiểm tra thông tin rồi bấm Nhập đơn vào Sweep.").font(.footnote).foregroundStyle(.secondary)
                         ForEach(result.candidates.filter { query.isEmpty || ($0.customer + " " + $0.filename).localizedStandardContains(query) }) { item in
                             if let old = store.ledger.orders.first(where: { $0.sourceID == item.id }) {
                                 Button { saved(old.id) } label: { Label("\(item.customer) · đã nhập, mở lại", systemImage: "checkmark.circle") }
                             } else {
-                                NavigationLink { OrderIntakeView(candidate: item, saved: saved) } label: {
+                                Button { selected = item } label: {
                                     VStack(alignment: .leading) { Text(item.customer); Text(VND.format(item.total)).font(.caption).foregroundStyle(.secondary) }
                                 }
                             }
@@ -187,6 +255,18 @@ struct BillInboxView: View {
                     if result.candidates.isEmpty { Text("Chưa có gói đọc được. Tải thư mục về máy trong Tệp rồi chọn lại.") }
                 }
             }.searchable(text: $query, prompt: "Tìm trong gói Bill")
+                .sheet(item: $selected, onDismiss: {
+                    if let id = importedID { importedID = nil; saved(id) }
+                }) { item in
+                    OrderIntakeView(candidate: item) { id in importedID = id; selected = nil }
+                }
+                .task {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--bill-ui-testing"), result == nil {
+                        do { result = try store.billUITestResult() } catch { store.message = error.localizedDescription }
+                    }
+                    #endif
+                }
                 .navigationTitle("Nhập từ Bill").navigationBarTitleDisplayMode(.inline)
                 .toolbar { CloseSheet { dismiss() } }
                 .fileImporter(isPresented: $folderPicker, allowedContentTypes: [.folder]) { selection in

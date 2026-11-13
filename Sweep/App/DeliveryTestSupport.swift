@@ -18,4 +18,16 @@ extension DeliveryStore {
         } catch { message = error.localizedDescription }
     }
 }
+
+extension DeliveryStore {
+    func billUITestResult() throws -> BillImportResult {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 1400, height: 800)).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 1400, height: 800))
+            ("Ngay 12 thang 11 nam 2026\nSo: TEST-7856\nDon vi: TIEM THU UI\nDia chi: 12 Duong Mau\nDien thoai: 0900000000\nDia chi giao hang: Truoc 10h\nTien hang: 2.165.000" as NSString).draw(at: CGPoint(x: 50, y: 50), withAttributes: [.font: UIFont.systemFont(ofSize: 40), .foregroundColor: UIColor.black])
+        }
+        let url = root.appendingPathComponent("bill-ui-invoice.png")
+        try image.pngData()!.write(to: url)
+        return BillImportResult(candidates: [BillCandidate(id: "bill:ui-fixture", filename: url.lastPathComponent, customer: "TIEM THU UI", total: 2_165_000, isLegacy: true, image: url)], warnings: [])
+    }
+}
 #endif

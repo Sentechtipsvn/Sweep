@@ -7,6 +7,11 @@ struct BillCandidate: Identifiable {
     var filename: String
     var customer: String
     var total: Int64
+    var code = ""
+    var phone = ""
+    var address = ""
+    var deliveryNote = ""
+    var invoiceDate: Date?
     var cash: Int64 = 0
     var bank: Int64 = 0
     var deliveredAt: Date?
@@ -53,7 +58,8 @@ enum BillImport {
                 for field in ["deleted", "destroyed", "cancelled"] where text(record, field) == "1" { note += "\nSổ cũ có cờ \(field)=1; cần rà soát." }
                 if !text(record, "latestReport").isEmpty { note += "\nBáo cáo cũ: \(text(record, "latestReport")); chưa xác nhận gửi trong Sweep." }
             }
-            return BillCandidate(id: "bill:\(id)", filename: filename, customer: customer, total: total, cash: cash, bank: bank,
+            return BillCandidate(id: "bill:\(id)", filename: filename, customer: customer, total: total, code: text(record, "invoiceCode"), phone: text(record, "phone"), address: text(record, "address"),
+                                 deliveryNote: text(record, "deliveryNote"), invoiceDate: date(text(record, "invoiceDate")), cash: cash, bank: bank,
                                  deliveredAt: date(text(record, "deliveredAt")), createdAt: date(text(record, "createdAt")),
                                  note: note.trimmingCharacters(in: .whitespacesAndNewlines), isLegacy: isLegacy,
                                  sourceSnapshot: String(data: try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), encoding: .utf8), image: images.appendingPathComponent(filename))
@@ -91,7 +97,16 @@ enum BillImport {
             for url in entries {
                 do {
                     guard FileRules.isDescendant(url, of: root) else { throw DeliveryError.invalid("Đường dẫn ngoài thư mục.") }
-                    for item in try decode(boundedRead(url), images: images) where candidates[item.id] == nil { candidates[item.id] = item }
+                    for item in try decode(boundedRead(url), images: images) {
+                        if var old = candidates[item.id] {
+                            if old.code.isEmpty { old.code = item.code }
+                            if old.phone.isEmpty { old.phone = item.phone }
+                            if old.address.isEmpty { old.address = item.address }
+                            if old.deliveryNote.isEmpty { old.deliveryNote = item.deliveryNote }
+                            if old.invoiceDate == nil { old.invoiceDate = item.invoiceDate }
+                            candidates[item.id] = old
+                        } else { candidates[item.id] = item }
+                    }
                 } catch { warnings.append("\(url.lastPathComponent): \(error.localizedDescription)") }
             }
         }

@@ -11,7 +11,7 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15-intel
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,8 +37,46 @@ jobs:
           mkdir -p dist/Payload
           cp -R build/Build/Products/Release-iphoneos/Sweep.app dist/Payload/
           cd dist
-          /usr/bin/zip -qr Sweep-0.2.0-unsigned.ipa Payload
-          shasum -a 256 Sweep-0.2.0-unsigned.ipa > SHA256.txt
+          /usr/bin/zip -qr Sweep-0.2.1-unsigned.ipa Payload
+          shasum -a 256 Sweep-0.2.1-unsigned.ipa > SHA256.txt
+      - name: Upload phone-test beta
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-0.2.1-beta-unsigned
+          path: |
+            dist/Sweep-0.2.1-unsigned.ipa
+            dist/SHA256.txt
+          retention-days: 14
+      - name: Build and validate Bill shortcut
+        run: |
+          python3 -m venv /tmp/sweep-bill-venv
+          /tmp/sweep-bill-venv/bin/pip install regex==2026.11.9
+          /tmp/sweep-bill-venv/bin/python -m unittest discover -s Integrations/Bill -p test_bill.py -v
+          /tmp/sweep-bill-venv/bin/python Integrations/Bill/bill_builder.py
+      - name: Sign Bill with native Apple validation
+        run: |
+          python3 - <<'PY'
+          import subprocess,json
+          from pathlib import Path
+          source='Integrations/Bill/build/Bill-v3.3.0-unsigned.shortcut'
+          output='Integrations/Bill/build/Bill-v3.3.0.shortcut'
+          try:
+              p=subprocess.run(['/usr/bin/shortcuts','sign','--mode','anyone','--input',source,'--output',output],capture_output=True,text=True,timeout=120)
+              signed=p.returncode==0 and Path(output).is_file() and Path(output).read_bytes().startswith(b'AEA1')
+              status={'signed':signed,'exit':p.returncode,'detail':(p.stdout+p.stderr)[-2000:]}
+          except subprocess.TimeoutExpired:
+              status={'signed':False,'detail':'Native signing timed out; unsigned source retained.'}
+          Path('Integrations/Bill/build/SIGNING-STATUS.json').write_text(json.dumps(status,ensure_ascii=False,indent=2))
+          print(json.dumps(status,ensure_ascii=False))
+          PY
+      - name: Upload Bill shortcut and signing status
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bill-3.3.0
+          path: |
+            Integrations/Bill/build/Bill-v3.3.0*.shortcut
+            Integrations/Bill/build/SIGNING-STATUS.json
+          retention-days: 14
       - name: Smoke test navigation on iPhone simulator
         run: |
           set -o pipefail
@@ -48,15 +86,7 @@ jobs:
           xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build-simulator \
             -resultBundlePath build-ui.xcresult CODE_SIGNING_ALLOWED=NO \
-            -parallel-testing-enabled NO test | tee simulator-test.log
-      - name: Upload test build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Sweep-0.2.0-unsigned
-          path: |
-            dist/Sweep-0.2.0-unsigned.ipa
-            dist/SHA256.txt
-          retention-days: 14
+            -parallel-testing-enabled NO -only-testing:SweepUITests/SweepUITests/testBillPreviewOCRImportAndRelaunch test | tee simulator-test.log
       - name: Export simulator screenshots
         if: always()
         run: |

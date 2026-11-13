@@ -7,3 +7,5 @@ dist/
 *.xcworkspace/
 *.ipa
 *.xcresult/
+__pycache__/
+Integrations/Bill/build/
