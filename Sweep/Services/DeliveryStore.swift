@@ -83,13 +83,15 @@ final class DeliveryStore: ObservableObject {
             if let file { try? FileManager.default.removeItem(at: url(file)) }; message = error.localizedDescription
         }
     }
-    func prepareReport(_ id: UUID, text: String) async -> DeliveryReport? {
+    func prepareReport(_ id: UUID, text: String, evidenceIDs: [UUID]? = nil) async -> DeliveryReport? {
         guard !busy, let order = order(id) else { return nil }
         busy = true; defer { busy = false }
         do {
+            var next = ledger
+            let report = try next.prepareReport(id, text: text, evidenceIDs: evidenceIDs)
+            let files = report.evidenceIDs.compactMap { wanted in order.activeEvidence.first { $0.id == wanted } }
             let directory = evidenceDirectory
-            try await Task.detached(priority: .userInitiated) { for file in order.activeEvidence { try EvidenceFiles.verify(file, directory: directory) } }.value
-            var next = ledger; let report = try next.prepareReport(id, text: text)
+            try await Task.detached(priority: .userInitiated) { for file in files { try EvidenceFiles.verify(file, directory: directory) } }.value
             try database!.save(next); ledger = next; return report
         } catch { message = error.localizedDescription; return nil }
     }

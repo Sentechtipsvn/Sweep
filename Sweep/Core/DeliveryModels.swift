@@ -162,6 +162,20 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
         if bank > 0 { needed.append(.transfer) }
         return needed.filter { role in !activeEvidence.contains { $0.role == role } }
     }
+    var deliveryNoteForDisplay: String { InvoiceParser.cleanStoredNote(note) }
+    var orderedEvidence: [DeliveryEvidence] {
+        [EvidenceRole.invoice, .signature, .transfer].flatMap { role in activeEvidence.filter { $0.role == role } }
+    }
+    var defaultShareEvidenceIDs: [UUID] {
+        let roles: Set<EvidenceRole> = bank > 0 ? [.invoice, .transfer] : [.invoice, .signature]
+        return orderedEvidence.filter { roles.contains($0.role) }.map(\.id)
+    }
+    func shareText() -> String {
+        if bank > 0 { return "\(customer) đã chuyển khoản \(VND.format(bank))" }
+        if cash > 0 { return "\(customer) đã thanh toán tiền mặt \(VND.format(cash))" }
+        if settlement?.mode == .deferred { return "\(customer) · Chuyển khoản sau · \(VND.format(total))" }
+        return "\(customer) · \(VND.format(total))"
+    }
     func reportText() -> String {
         var rows = [customer, "Mã phiếu: \(code)", "Kết quả: \(outcome.rawValue)", "Tổng đơn: \(VND.format(total))",
                     "Tiền mặt đã thu: \(VND.format(cash))", "CK khách báo: \(VND.format(bank))",
@@ -258,13 +272,17 @@ struct DeliveryLedger: Codable, Equatable {
         orders[i].revision += 1
         record("Đối soát CK", orderID: id, "\(payment.bank) · \(note)")
     }
-    mutating func prepareReport(_ id: UUID, text: String) throws -> DeliveryReport {
+    mutating func prepareReport(_ id: UUID, text: String, evidenceIDs: [UUID]? = nil) throws -> DeliveryReport {
         guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].settlement != nil, orders[i].voidReason == nil else {
             throw DeliveryError.invalid("Chốt giao / tiền trước khi chuẩn bị báo cáo.")
         }
-        guard orders[i].missingEvidence().isEmpty else { throw DeliveryError.invalid("Thiếu: " + orders[i].missingEvidence().map(\.rawValue).joined(separator: ", ")) }
+        if evidenceIDs == nil {
+            guard orders[i].missingEvidence().isEmpty else { throw DeliveryError.invalid("Thiếu: " + orders[i].missingEvidence().map(\.rawValue).joined(separator: ", ")) }
+        }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nội dung báo cáo đang trống.") }
-        let evidence = [EvidenceRole.invoice, .signature, .transfer].flatMap { role in orders[i].activeEvidence.filter { $0.role == role }.map(\.id) }
+        let allowed = Set(orders[i].orderedEvidence.map(\.id))
+        let evidence = evidenceIDs ?? orders[i].orderedEvidence.map(\.id)
+        guard Set(evidence).count == evidence.count, Set(evidence).isSubset(of: allowed) else { throw DeliveryError.invalid("Ảnh chọn gửi không còn trong hồ sơ. Chọn lại ảnh.") }
         if let previous = orders[i].reports.last, previous.revision == orders[i].revision, previous.text == text, previous.evidenceIDs == evidence { return previous }
         let report = DeliveryReport(revision: orders[i].revision, text: text, evidenceIDs: evidence)
         orders[i].reports.append(report); record("Chuẩn bị báo cáo", orderID: id, report.id.uuidString)

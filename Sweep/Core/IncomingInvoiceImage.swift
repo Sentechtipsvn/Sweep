@@ -16,8 +16,8 @@ enum IncomingInvoiceImage {
             defer { if accessed { source.stopAccessingSecurityScopedResource() } }
             _ = try EvidenceFiles.hash(source)
             guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-                  CGImageSourceGetCount(imageSource) == 1,
-                  let type = CGImageSourceGetType(imageSource) as String?, UTType(type)?.conforms(to: .image) == true else { throw error }
+                  CGImageSourceGetCount(imageSource) > 0,
+                  CGImageSourceGetType(imageSource) != nil else { throw error }
             let index = CGImageSourceGetPrimaryImageIndex(imageSource)
             guard let props = CGImageSourceCopyPropertiesAtIndex(imageSource, index, nil) as? [CFString: Any],
                   let width = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.int64Value,

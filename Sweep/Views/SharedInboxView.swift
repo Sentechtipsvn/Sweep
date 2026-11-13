@@ -34,11 +34,7 @@ struct SharedInboxView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Text("Từ Zalo, Ảnh hoặc Tệp: chia sẻ một ảnh phiếu → Sweep → Gửi đến Sweep. Ảnh nằm ở đây đến khi Sếp nhập đơn hoặc xóa ảnh chờ.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if !inbox.problem.isEmpty { Text(inbox.problem).foregroundStyle(.orange) }
-                }
+                if !inbox.problem.isEmpty { Section { Text(inbox.problem).foregroundStyle(.orange) } }
                 Section("\(inbox.items.count) ảnh chờ nhận") {
                     if inbox.items.isEmpty { Text("Chưa có ảnh chờ nhận.").foregroundStyle(.secondary) }
                     ForEach(inbox.items) { item in

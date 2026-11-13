@@ -1,4 +1,4 @@
-name: Validate incoming shares and VietQR
+name: Validate Sweep delivery workflows
 on:
   pull_request:
     branches: [master]
@@ -34,13 +34,13 @@ jobs:
       - name: Package IPA with verifiable App Group metadata for AltStore
         run: |
           python3 Tools/package_ipa.py --app build/Build/Products/Release-iphoneos/Sweep.app \
-            --output dist/Sweep-0.3.2-AltStore.ipa
+            --output dist/Sweep-0.4.0-AltStore.ipa
       - name: Upload app for AltStore signing
         uses: actions/upload-artifact@v4
         with:
-          name: Sweep-0.3.2-AltStore
+          name: Sweep-0.4.0-AltStore
           path: |
-            dist/Sweep-0.3.2-AltStore.ipa
+            dist/Sweep-0.4.0-AltStore.ipa
             dist/SHA256.txt
             dist/SIGNING-METADATA.json
           retention-days: 14
@@ -79,7 +79,10 @@ jobs:
             -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 \
             -only-testing:SweepUITests/SweepUITests/testBillPreviewOCRImportAndRelaunch \
             -only-testing:SweepUITests/SweepUITests/testRecordedTransferStillDisplaysQRCode \
-            -only-testing:SweepUITests/SweepUITests/testSharedImageReviewImportQRSetupAndRelaunch test | tee simulator-test.log
+            -only-testing:SweepUITests/SweepUITests/testSharedImageReviewImportQRSetupAndRelaunch \
+            -only-testing:SweepUITests/SweepUITests/testReportImageSelectionAndCompactTransferCaption \
+            -only-testing:SweepUITests/SweepUITests/testReconciliationEmptyMonthHasNoFiguresFromAnotherMonth \
+            -only-testing:SweepUITests/SweepUITests/testIntakeHasOnlyPhotoAndCameraSourcesAtLargeTextSize test | tee simulator-test.log
       - name: Export screenshots
         if: always()
         run: |

@@ -35,13 +35,13 @@ jobs:
       - name: Package IPA for AltStore signing
         run: |
           python3 Tools/package_ipa.py --app build/Build/Products/Release-iphoneos/Sweep.app \
-            --output dist/Sweep-0.3.2-AltStore.ipa
+            --output dist/Sweep-0.4.0-AltStore.ipa
       - name: Upload phone-test beta
         uses: actions/upload-artifact@v4
         with:
-          name: Sweep-0.3.2-AltStore
+          name: Sweep-0.4.0-AltStore
           path: |
-            dist/Sweep-0.3.2-AltStore.ipa
+            dist/Sweep-0.4.0-AltStore.ipa
             dist/SHA256.txt
             dist/SIGNING-METADATA.json
           retention-days: 14

@@ -1,6 +1,78 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    func testReportImageSelectionAndCompactTransferCaption() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--qr-ui-testing"]
+        app.launch()
+        let order = app.buttons["order.TEST-001"]
+        XCTAssertTrue(order.waitForExistence(timeout: 20)); order.tap()
+        reveal(app.buttons["order.report"], in: app); app.buttons["order.report"].tap()
+        let caption = app.textViews["report.text"]
+        XCTAssertTrue(caption.waitForExistence(timeout: 10))
+        XCTAssertEqual(caption.value as? String, "Khách thử nghiệm đã chuyển khoản 2.165.000₫")
+        let invoice = app.buttons["report.remove.Phiếu nội bộ"]
+        let transfer = app.buttons["report.remove.Ảnh giao dịch"]
+        XCTAssertTrue(invoice.exists); XCTAssertTrue(transfer.exists)
+        XCTAssertFalse(app.buttons["report.remove.Phiếu khách ký"].exists)
+        transfer.tap(); XCTAssertFalse(transfer.exists)
+        app.buttons["report.chooseImages"].tap()
+        let transferChoice = app.buttons["report.select.Ảnh giao dịch"]
+        XCTAssertTrue(transferChoice.waitForExistence(timeout: 5)); transferChoice.tap()
+        app.buttons["report.select.Phiếu khách ký"].tap()
+        app.buttons["report.imagesDone"].tap()
+        let signature = app.buttons["report.remove.Phiếu khách ký"]
+        reveal(signature, in: app); XCTAssertTrue(signature.exists); signature.tap()
+        XCTAssertTrue(transfer.exists); XCTAssertTrue(invoice.exists)
+        reveal(app.buttons["report.prepare"], in: app); app.buttons["report.prepare"].tap()
+        XCTAssertTrue(app.buttons["report.share"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["report.remove.Phiếu khách ký"].exists)
+        attach(app, name: "report-two-selected-images-short-caption")
+        app.buttons["report.chooseImages"].tap()
+        XCTAssertTrue(app.buttons["report.select.Phiếu khách ký"].waitForExistence(timeout: 5))
+        attach(app, name: "report-original-signature-still-available")
+    }
+
+    func testReconciliationEmptyMonthHasNoFiguresFromAnotherMonth() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--monthly-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["order.TEST-001"].waitForExistence(timeout: 20))
+        app.tabBars.buttons["Đối soát"].tap()
+        assertRow("audit.count", contains: "1", in: app)
+        assertRow("audit.cashCollected", contains: "665.000₫", in: app)
+        assertRow("audit.cashHanded", contains: "500.000₫", in: app)
+        assertRow("audit.bankPending", contains: "1.500.000₫", in: app)
+        attach(app, name: "audit-current-month")
+        app.swipeDown(); app.swipeDown()
+        app.buttons["audit.previous"].tap()
+        for id in ["audit.count", "audit.fee", "audit.cashCollected", "audit.cashHanded", "audit.cashDifference", "audit.bankPending"] {
+            assertRow(id, contains: id == "audit.count" ? "0" : "0₫", in: app)
+        }
+        XCTAssertFalse(app.staticTexts["665.000₫"].exists)
+        attach(app, name: "audit-empty-month-all-zero")
+        app.swipeDown(); app.swipeDown()
+        app.buttons["audit.next"].tap()
+        assertRow("audit.count", contains: "1", in: app)
+        assertRow("audit.cashCollected", contains: "665.000₫", in: app)
+    }
+
+    func testIntakeHasOnlyPhotoAndCameraSourcesAtLargeTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL", "--delivery-ui-testing", "--reset-delivery"]
+        app.launch()
+        let newOrder = app.buttons["orders.new"]
+        XCTAssertTrue(newOrder.waitForExistence(timeout: 20)); newOrder.tap()
+        let photos = app.buttons["evidence.photos"], camera = app.buttons["evidence.camera"]
+        XCTAssertTrue(photos.waitForExistence(timeout: 10)); XCTAssertTrue(camera.exists)
+        XCTAssertTrue(photos.label.contains("Chọn ảnh")); XCTAssertTrue(camera.label.contains("Chụp ảnh"))
+        XCTAssertFalse(app.buttons["Tệp"].exists)
+        attach(app, name: "intake-two-photo-sources-large-text")
+    }
+
     func testRecordedTransferStillDisplaysQRCode() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -164,6 +236,14 @@ final class SweepUITests: XCTestCase {
             let scroll = collection ?? table ?? app.scrollViews.allElementsBoundByIndex.last { $0.isHittable }
             if let scroll { scroll.swipeUp() } else { app.swipeUp() }
         }
+    }
+
+    private func assertRow(_ id: String, contains text: String, in app: XCUIApplication) {
+        let row = app.descendants(matching: .any).matching(identifier: id).firstMatch
+        reveal(row, in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5), id)
+        let visible = row.label + " " + String(describing: row.value ?? "") + " " + row.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " ")
+        XCTAssertTrue(visible.contains(text), "\(id): \(visible)")
     }
 
     private func dismissKeyboard(in app: XCUIApplication) {

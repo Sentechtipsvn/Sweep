@@ -20,6 +20,15 @@ extension DeliveryStore {
 }
 
 extension DeliveryStore {
+    func installMonthlyUITestFixture() {
+        guard ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing"), let order = ledger.orders.first, order.settlement == nil else { return }
+        _ = change { ledger in
+            try ledger.sign(order.id, at: Date())
+            try ledger.settle(order.id, value: Settlement(outcome: .delivered, mode: .mixed, cash: 665_000, bank: 1_500_000, note: "", at: Date()))
+            try ledger.handover(500_000, at: Date(), note: "UI test monthly remittance")
+        }
+    }
+
     func installQRUITestFixture() {
         guard ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing"), let order = ledger.orders.first else { return }
         _ = change { ledger in
@@ -37,7 +46,7 @@ extension DeliveryStore {
         do {
             let source = try billUITestResult().candidates[0].image
             guard let image = UIImage(contentsOfFile: source.path) else { throw DeliveryError.invalid("Không mở được ảnh mẫu UI.") }
-            let received = try await SharedInvoiceLoader.load(from: NSItemProvider(object: image))
+            let received = try await SharedInvoiceLoader.load(from: NSItemProvider(item: image, typeIdentifier: "public.image"))
             defer { try? FileManager.default.removeItem(at: received) }
             _ = try SharedInvoiceInbox.live().add(received)
         } catch { try? FileManager.default.removeItem(at: marker); throw error }

@@ -69,6 +69,36 @@ final class IncomingInvoiceImageTests: XCTestCase {
         XCTAssertThrowsError(try IncomingInvoiceImage.copy(data: Data("not an image".utf8)))
     }
 
+    func testLegacyPublicImageItemAcceptsEncodedData() async throws {
+        let bytes = try encoded(.jpeg)
+        let provider = NSItemProvider(item: bytes as NSData, typeIdentifier: UTType.image.identifier)
+        let result = try await SharedInvoiceLoader.load(from: provider)
+        defer { try? FileManager.default.removeItem(at: result) }
+        XCTAssertEqual(try Data(contentsOf: result), bytes)
+    }
+
+    func testBMPAndGIFAreConvertedToReadableStillImages() throws {
+        for type in [UTType.bmp, .gif] {
+            let result = try IncomingInvoiceImage.copy(data: encoded(type))
+            defer { try? FileManager.default.removeItem(at: result) }
+            XCTAssertEqual(try EvidenceFiles.imageExtension(result), "png")
+        }
+    }
+
+    func testAnimatedGIFFirstFrameCanBeImportedAsInvoice() throws {
+        let data = NSMutableData()
+        let input = try XCTUnwrap(CGImageSourceCreateWithData(encoded(.png) as CFData, nil))
+        let frame = try XCTUnwrap(CGImageSourceCreateImageAtIndex(input, 0, nil))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(data, UTType.gif.identifier as CFString, 2, nil))
+        CGImageDestinationAddImage(destination, frame, nil); CGImageDestinationAddImage(destination, frame, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let result = try IncomingInvoiceImage.copy(data: data as Data)
+        defer { try? FileManager.default.removeItem(at: result) }
+        XCTAssertEqual(try EvidenceFiles.imageExtension(result), "png")
+        let normalized = try XCTUnwrap(CGImageSourceCreateWithURL(result as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetCount(normalized), 1)
+    }
+
     private func encoded(_ type: UTType) throws -> Data {
         let context = try XCTUnwrap(CGContext(data: nil, width: 1032, height: 733, bitsPerComponent: 8,
             bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))

@@ -33,38 +33,37 @@ struct EvidencePicker: View {
     let title: String
     let onChoose: (URL) async -> Void
     @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var selection: PhotosPickerItem?
-    @State private var filePicker = false
     @State private var camera = false
+    @State private var loading = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.subheadline.bold())
-            HStack {
-                PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .current) { Label("Ảnh", systemImage: "photo") }
-                Button { filePicker = true } label: { Label("Tệp", systemImage: "folder") }
-                if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                    Button { camera = true } label: { Label("Chụp", systemImage: "camera") }
-                }
-            }.buttonStyle(.bordered).disabled(store.busy)
+            if typeSize.isAccessibilitySize {
+                VStack(spacing: 10) { photoButton; cameraButton }
+            } else {
+                HStack(spacing: 12) { photoButton; cameraButton }
+            }
+            if loading { ProgressView() }
         }
+        .buttonStyle(.bordered).controlSize(.large).disabled(store.busy || loading)
         .onChange(of: selection) { _, item in
             guard let item else { return }
             Task {
+                loading = true; defer { loading = false; selection = nil }
                 do {
-                    guard let image = try await item.loadTransferable(type: ImportedImage.self) else { throw DeliveryError.invalid("Không đọc được ảnh.") }
-                    defer { withExtendedLifetime(image) {} }
-                    await onChoose(image.url)
-                } catch { store.message = error.localizedDescription }
-                selection = nil
-            }
-        }
-        .fileImporter(isPresented: $filePicker, allowedContentTypes: [.jpeg, .png, .heic]) { result in
-            Task {
-                do {
-                    let source = try result.get()
-                    let image = try await Task.detached { try ImportedImage.copy(from: source) }.value
-                    defer { withExtendedLifetime(image) {} }
-                    await onChoose(image.url)
+                    var ready: URL?
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        ready = try? await Task.detached { try IncomingInvoiceImage.copy(data: data) }.value
+                    }
+                    if ready == nil, let image = try await item.loadTransferable(type: ImportedImage.self) {
+                        ready = try await Task.detached { try IncomingInvoiceImage.copy(from: image.url) }.value
+                        withExtendedLifetime(image) {}
+                    }
+                    guard let ready else { throw DeliveryError.invalid("Chưa tải được ảnh. Mở ảnh trong thư viện rồi chọn lại.") }
+                    defer { try? FileManager.default.removeItem(at: ready) }
+                    await onChoose(ready)
                 } catch { store.message = error.localizedDescription }
             }
         }
@@ -73,15 +72,25 @@ struct EvidencePicker: View {
                 camera = false
                 guard let image else { return }
                 Task {
-                    let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
-                    defer { try? FileManager.default.removeItem(at: destination) }
+                    loading = true; defer { loading = false }
                     do {
-                        guard let data = image.jpegData(compressionQuality: 0.95) else { throw DeliveryError.invalid("Chưa đọc được ảnh vừa chụp.") }
-                        try data.write(to: destination, options: .atomic); await onChoose(destination)
+                        let ready = try SharedInvoiceLoader.copyImage(image)
+                        defer { try? FileManager.default.removeItem(at: ready) }
+                        await onChoose(ready)
                     } catch { store.message = error.localizedDescription }
                 }
             }.ignoresSafeArea()
         }
+    }
+    private var photoButton: some View {
+        PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .compatible) {
+            Label("Chọn ảnh", systemImage: "photo.on.rectangle").lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity)
+        }.accessibilityIdentifier("evidence.photos")
+    }
+    private var cameraButton: some View {
+        Button { camera = true } label: {
+            Label("Chụp ảnh", systemImage: "camera").lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity)
+        }.disabled(!UIImagePickerController.isSourceTypeAvailable(.camera)).accessibilityIdentifier("evidence.camera")
     }
 }
 

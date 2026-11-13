@@ -1,6 +1,6 @@
 import Foundation
 
-/// Label-based suggestions only. Never infer a total from item prices or a customer phone from a salesperson.
+/// Label-based suggestions. The phone field below the salesperson is the customer's phone.
 struct InvoiceFields: Equatable {
     var code = ""
     var customer = ""
@@ -12,6 +12,23 @@ struct InvoiceFields: Equatable {
 }
 
 enum InvoiceParser {
+    static func isTableHeader(_ text: String) -> Bool {
+        let value = folded(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        let columns = [#"\bstt\b"#, #"\bma\s+hang\b"#, #"\bten\s+hang\b"#, #"\bdon\s+vi\s+tinh\b"#, #"\bso\s+luong\b"#, #"\bdon\s+gia\b"#, #"\bthanh\s+tien\b"#]
+        if columns.filter({ value.range(of: $0, options: .regularExpression) != nil }).count >= 2 { return true }
+        return value.range(of: #"^(?:stt|ma\s+hang|ten\s+hang(?:\s+hoa)?|so\s+luong|don\s+gia|thanh\s+tien|ma\s+hang\s+thanh(?:\s+tien)?)$"#, options: .regularExpression) != nil
+    }
+    static func cleanStoredNote(_ note: String) -> String {
+        note.split(separator: "\n").compactMap { line -> String? in
+            let raw = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
+            let ascii = folded(raw)
+            if ascii.hasPrefix("dien thoai tren phieu can xac minh nguoi nhan:") { return nil }
+            let clean: String
+            if ascii.hasPrefix("giao hang:"), let colon = raw.firstIndex(of: ":") { clean = String(raw[raw.index(after: colon)...]).trimmingCharacters(in: .whitespaces) }
+            else { clean = raw }
+            return clean.isEmpty || isTableHeader(clean) ? nil : clean
+        }.joined(separator: "\n")
+    }
     private static let labels = #"(?:don\s+vi|nguoi\s+mua\s+hang|dia\s+chi\s+giao\s+hang|dia\s+chi|dien\s+thoai|sdt|nv\s+ban\s+hang|so)\s*[:：]"#
     private static func folded(_ text: String) -> String {
         text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "vi_VN"))
@@ -40,19 +57,21 @@ enum InvoiceParser {
             .split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         var result = InvoiceFields()
         var totalPriority = 0
+        var inHeader = true
         for (i, line) in lines.enumerated() {
+            if isTableHeader(line) { inHeader = false }
             func field(_ label: String) -> String? {
                 let found = value(line, pattern: #"(?:^|\s)(?:"# + label + #")\s*[:：]\s*"#)
                 // OCR may put a value on the next line. Do not consume another labelled field.
-                if found == "", i + 1 < lines.count, value(lines[i + 1], pattern: labels) == nil { return lines[i + 1] }
+                if found == "", i + 1 < lines.count, value(lines[i + 1], pattern: labels) == nil, !isTableHeader(lines[i + 1]) { return lines[i + 1] }
                 return found
             }
-            if result.customer.isEmpty, let v = field(#"don\s+vi"#) { result.customer = v }
-            if result.address.isEmpty, let v = field(#"dia\s+chi"#) { result.address = v }
-            if result.deliveryNote.isEmpty, let v = field(#"dia\s+chi\s+giao\s+hang"#) { result.deliveryNote = v }
-            if result.code.isEmpty, let v = field("so"), let token = v.split(whereSeparator: { $0.isWhitespace }).first,
+            if inHeader, result.customer.isEmpty, let v = field(#"don\s+vi"#) { result.customer = v }
+            if inHeader, result.address.isEmpty, let v = field(#"dia\s+chi"#) { result.address = v }
+            if inHeader, result.deliveryNote.isEmpty, let v = field(#"dia\s+chi\s+giao\s+hang"#), !isTableHeader(v) { result.deliveryNote = v }
+            if inHeader, result.code.isEmpty, let v = field("so"), let token = v.split(whereSeparator: { $0.isWhitespace }).first,
                token.range(of: #"^[A-Za-z0-9][A-Za-z0-9./_-]{0,47}$"#, options: .regularExpression) != nil { result.code = String(token) }
-            if result.phone.isEmpty, let v = field(#"dien\s+thoai|sdt"#) {
+            if inHeader, result.phone.isEmpty, let v = field(#"dien\s+thoai|sdt"#) {
                 let digits = v.filter { $0.isNumber || $0 == "+" }
                 if digits.range(of: #"^(?:0[0-9]{9,10}|\+84[0-9]{9,10})$"#, options: .regularExpression) != nil { result.phone = digits }
             }

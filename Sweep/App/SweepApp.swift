@@ -23,6 +23,7 @@ struct SweepApp: App {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--seed-delivery") { delivery.installUITestFixture() }
                 if ProcessInfo.processInfo.arguments.contains("--qr-ui-testing") { delivery.installQRUITestFixture() }
+                if ProcessInfo.processInfo.arguments.contains("--monthly-ui-testing") { delivery.installMonthlyUITestFixture() }
                 #endif
                 if library.canRead { library.reload() }
             }
