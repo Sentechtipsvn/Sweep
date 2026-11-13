@@ -21,4 +21,6 @@ Video thử trên iPhone cho thấy SweepShare mở được từ Zalo nhưng kh
 
 Bổ sung bốn kiểm thử chọn nhóm: AltStore remap, ký thông thường, nhóm rỗng/sai và tính nhất quán giữa app/extension. CI kiểm tra core, build iPhone và kiểm tra entitlement trong IPA; bài kiểm tra giao diện chạy riêng. Chỉ xác nhận kết quả sau khi CI trả về. Luồng App Groups thật của AltStore vẫn cần thử trên iPhone sau khi ký lại bản 0.3.1.
 
+Kết quả build `a48825871f49df21f457df7103743f9410cebaf1`: 36 kiểm thử Swift đạt; Xcode 16.4 build iPhone đạt; job validate hoàn tất thành công. Đã tải IPA và đọc lại Mach-O của cả hai executable, xác nhận `com.apple.security.application-groups = [group.com.sentechtipsvn.sweep]`, phiên bản 0.3.1 (5), CRC và SHA256 đúng. SHA256 IPA: `75faf0a21cd30411093ae0a4a1c35924e7b8b7d283e02992b8932f3b2445a4c9`. [Lượt CI](https://github.com/Sentechtipsvn/Sweep/actions/runs/43461155526) có job UI riêng còn đang chạy tại lúc bàn giao. Đây chưa phải xác nhận AltStore/iPhone thật đã cấp và mở được container.
+
 Không cần gỡ app đang chứa dữ liệu. Xuất sao lưu trước khi cài đè, giữ extension khi AltStore hỏi. Không ký lại bản 0.3.0 để thử sửa lỗi này.
