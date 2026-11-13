@@ -89,17 +89,28 @@ final class SweepUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
         attach(app, name: "08-bill-ocr-review")
         save.tap()
-        XCTAssertTrue(app.staticTexts["Mã phiếu"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["TEST-7856"].firstMatch.exists)
+        // LabeledContent exposes its value through the row, not a separate StaticText.
+        // Wait for both sheets to finish dismissing before observing the detail screen.
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Mã phiếu"].waitForExistence(timeout: 10))
         attach(app, name: "09-bill-saved-order")
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--bill-ui-testing"]
         app.launch()
-        XCTAssertTrue(app.buttons["order.TEST-7856"].waitForExistence(timeout: 15))
+        let persisted = app.buttons["order.TEST-7856"]
+        XCTAssertTrue(persisted.waitForExistence(timeout: 15))
+        XCTAssertEqual(app.buttons.matching(identifier: "order.TEST-7856").count, 1)
         XCTAssertTrue(app.staticTexts["Chưa tính công"].firstMatch.exists)
         attach(app, name: "10-bill-persisted-list")
         app.buttons["orders.bill"].tap()
-        XCTAssertTrue(app.buttons["bill.existing.bill:ui-fixture"].waitForExistence(timeout: 10))
+        let existing = app.buttons["bill.existing.bill:ui-fixture"]
+        XCTAssertTrue(existing.waitForExistence(timeout: 10))
+        existing.tap()
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 20))
+        app.navigationBars["Chi tiết đơn"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(persisted.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons.matching(identifier: "order.TEST-7856").count, 1)
+        attach(app, name: "11-bill-no-duplicate")
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
