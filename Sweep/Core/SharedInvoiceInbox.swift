@@ -29,11 +29,16 @@ struct SharedInvoiceInbox {
             return SharedInvoiceInbox(directory: FileManager.default.temporaryDirectory.appendingPathComponent("Sweep-Delivery-UITests/Inbox", isDirectory: true))
         }
         #endif
-        guard let group = Bundle.main.object(forInfoDictionaryKey: "SweepAppGroupIdentifier") as? String,
-              let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else {
-            throw DeliveryError.invalid("Bản cài chưa truy cập được hộp thư chia sẻ. Cần ký cả Sweep và SweepShare với cùng quyền App Groups; ảnh chưa được nhận vào Sweep.")
+        let info = Bundle.main.infoDictionary ?? [:]
+        let groups = AppGroupConfiguration.identifiers(in: info)
+        for group in groups {
+            if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) {
+                return SharedInvoiceInbox(directory: container.appendingPathComponent("SharedInvoices", isDirectory: true))
+            }
         }
-        return SharedInvoiceInbox(directory: container.appendingPathComponent("SharedInvoices", isDirectory: true))
+        let source = info["ALTAppGroups"] == nil ? "cấu hình gốc" : "AltStore"
+        let details = groups.isEmpty ? "Chưa có nhóm được cấp." : "Nhóm từ \(source): " + groups.joined(separator: ", ")
+        throw DeliveryError.invalid("Tiện ích đã mở nhưng chưa truy cập được hộp thư chung. \(details) Dùng bản IPA dành cho AltStore, giữ tiện ích mở rộng khi cài. Nếu vẫn lỗi, gửi lại thông báo này để kiểm tra quyền nhóm; ảnh chưa được nhận vào Sweep.")
     }
 
     @discardableResult func add(_ source: URL) throws -> Item {

@@ -128,7 +128,7 @@ final class SweepUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(identifier: "order.TEST-7856").count, 1)
         XCTAssertTrue(app.staticTexts["Chưa tính công"].firstMatch.exists)
         attach(app, name: "10-bill-persisted-list")
-        app.buttons["orders.bill"].tap()
+        app.buttons["orders.receive"].tap(); app.buttons["orders.bill"].tap()
         let existing = app.buttons["bill.existing.bill:ui-fixture"]
         XCTAssertTrue(existing.waitForExistence(timeout: 10))
         existing.tap()

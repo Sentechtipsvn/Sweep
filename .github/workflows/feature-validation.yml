@@ -31,21 +31,41 @@ jobs:
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build.log
           test -d build/Build/Products/Release-iphoneos/Sweep.app/PlugIns/SweepShare.appex
-      - name: Package phone-test beta
+      - name: Package IPA with verifiable App Group metadata for AltStore
         run: |
-          mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/Sweep.app dist/Payload/
-          cd dist
-          /usr/bin/zip -qr Sweep-0.3.0-unsigned.ipa Payload
-          shasum -a 256 Sweep-0.3.0-unsigned.ipa > SHA256.txt
-      - name: Upload unsigned app with extension
+          python3 Tools/package_ipa.py --app build/Build/Products/Release-iphoneos/Sweep.app \
+            --output dist/Sweep-0.3.1-AltStore.ipa
+      - name: Upload app for AltStore signing
         uses: actions/upload-artifact@v4
         with:
-          name: Sweep-0.3.0-beta-unsigned
+          name: Sweep-0.3.1-AltStore
           path: |
-            dist/Sweep-0.3.0-unsigned.ipa
+            dist/Sweep-0.3.1-AltStore.ipa
             dist/SHA256.txt
+            dist/SIGNING-METADATA.json
           retention-days: 14
+      - name: Upload device build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-device-build-log
+          path: build.log
+          if-no-files-found: ignore
+  ui:
+    name: Simulator intake regression checks
+    needs: validate
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
       - name: Check Bill import still works on simulator
         run: |
           set -o pipefail
@@ -56,6 +76,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build-simulator \
             -resultBundlePath build-ui.xcresult CODE_SIGNING_ALLOWED=NO \
             -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 \
             -only-testing:SweepUITests/SweepUITests/testBillPreviewOCRImportAndRelaunch \
             -only-testing:SweepUITests/SweepUITests/testSharedImageReviewImportQRSetupAndRelaunch test | tee simulator-test.log
       - name: Export screenshots
