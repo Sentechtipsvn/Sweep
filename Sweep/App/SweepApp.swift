@@ -9,13 +9,13 @@ struct SweepApp: App {
             TabView {
                 OrdersView().tabItem { Label("Đơn hàng", systemImage: "shippingbox") }
                 NavigationStack { ReconciliationView() }
-                    .tabItem { Label("Đối soát", systemImage: "checklist") }
+                    .tabItem { Label("Lịch sử", systemImage: "clock.arrow.circlepath") }
                 NavigationStack { HomeView() }
                     .tabItem { Label("Công cụ", systemImage: "sparkles") }
                 NavigationStack { SettingsView() }
                     .tabItem { Label("Cài đặt", systemImage: "gearshape") }
             }
-            .tint(.green)
+            .tint(SweepStyle.blue)
             .environmentObject(library)
             .environmentObject(delivery)
             .background(DeliveryFeedback(store: delivery).frame(width: 0, height: 0))

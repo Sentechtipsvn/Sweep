@@ -4,6 +4,7 @@ import WebKit
 struct OrderQRView: View {
     private struct Request: Equatable { let id = UUID(); let url: URL }
     let id: UUID
+    var suggested: Int64? = nil
     @EnvironmentObject private var store: DeliveryStore
     @State private var amount = ""
     @State private var requested: Request?
@@ -32,7 +33,7 @@ struct OrderQRView: View {
                         Text("Nội dung: \(VietQR.transferNote(code: order.code))").font(.subheadline)
                         Button("Tạo QR chuyển khoản") { generate() }
                             .accessibilityIdentifier("qr.generate").disabled(loading || order.voidReason != nil)
-                        if order.remaining <= 0 { Text("Sổ đã ghi nhận đủ tiền; Sếp vẫn có thể xem hoặc tạo lại QR theo số tiền nhập. Khoản thu trong sổ giữ nguyên.").font(.caption).foregroundStyle(.secondary) }
+
                         if loading { ProgressView("Đang tạo VietQR…") }
                         if !problem.isEmpty { Text(problem).foregroundStyle(.orange); Button("Thử lại") { generate() }.disabled(loading) }
                         if let svg {
@@ -40,9 +41,10 @@ struct OrderQRView: View {
                                 .accessibilityLabel("Mã QR chuyển khoản cho đơn \(order.code), \(amount) đồng")
                             Text("\(VND.format((try? VND.parse(amount)) ?? 0))").font(.title2.bold()).frame(maxWidth: .infinity).monospacedDigit()
                         }
-                        Text("Khách kiểm tra người nhận và số tiền trong app ngân hàng trước khi chuyển. Hiển thị QR không tự ghi nhận đã thu hoặc đã đối soát.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text("Tạo QR cần mạng. Mã đã tải có thể xem lại khi offline nếu bộ nhớ đệm còn giữ.").font(.caption).foregroundStyle(.secondary)
+                        Text("Quý khách kiểm tra số tiền trước khi chuyển khoản")
+                            .font(.headline).foregroundStyle(Color(red: 86/255, green: 1, blue: 44/255))
+                            .padding().frame(maxWidth: .infinity).background(Color(red: 0.07, green: 0.2, blue: 0.15), in: RoundedRectangle(cornerRadius: 16))
+
                     }
                 } else {
                     Section {
@@ -60,7 +62,7 @@ struct OrderQRView: View {
                 Button("Xong") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
             }
         }
-        .onAppear { if amount.isEmpty, let order { amount = String(VietQR.suggestedAmount(for: order)); generate() } }
+        .onAppear { if amount.isEmpty, let order { amount = String(suggested ?? VietQR.suggestedAmount(for: order)); generate() } }
         .onChange(of: amount) { _, value in if value != requestedAmount { invalidate() } }
         .onChange(of: store.ledger.settings.vietQR) { _, _ in invalidate() }
         .onChange(of: order) { _, _ in invalidate() }

@@ -4,6 +4,7 @@ import Foundation
 struct InvoiceFields: Equatable {
     var code = ""
     var customer = ""
+    var salesperson = ""
     var address = ""
     var phone = ""
     var deliveryNote = ""
@@ -66,6 +67,7 @@ enum InvoiceParser {
                 if found == "", i + 1 < lines.count, value(lines[i + 1], pattern: labels) == nil, !isTableHeader(lines[i + 1]) { return lines[i + 1] }
                 return found
             }
+            if inHeader, result.salesperson.isEmpty, let v = field(#"nv\s+ban\s+hang"#) { result.salesperson = v }
             if inHeader, result.customer.isEmpty, let v = field(#"don\s+vi"#) { result.customer = v }
             if inHeader, result.address.isEmpty, let v = field(#"dia\s+chi"#) { result.address = v }
             if inHeader, result.deliveryNote.isEmpty, let v = field(#"dia\s+chi\s+giao\s+hang"#), !isTableHeader(v) { result.deliveryNote = v }

@@ -32,8 +32,11 @@ enum DeliveryOutcome: String, Codable, CaseIterable {
 enum PaymentMode: String, Codable, CaseIterable {
     case none = "Chưa thu", cash = "Tiền mặt", bank = "Chuyển khoản ngay", deferred = "Chuyển khoản sau", mixed = "CK + tiền mặt"
 }
+enum DeliveryRoute: String, Codable, CaseIterable {
+    case cashFull = "Tiền mặt đủ", transferNow = "Chuyển khoản ngay", transferLater = "Chuyển khoản sau", freight = "Giao chành"
+}
 enum EvidenceRole: String, Codable, CaseIterable {
-    case invoice = "Phiếu nội bộ", signature = "Phiếu khách ký", transfer = "Ảnh giao dịch", companyQR = "QR công ty"
+    case invoice = "Phiếu nội bộ", signature = "Phiếu khách ký", transfer = "Ảnh giao dịch", companyQR = "QR công ty", freightSignature = "Phiếu nhà xe ký", goods = "Ảnh hàng đã gửi"
 }
 struct DeliveryEvidence: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -68,9 +71,19 @@ struct Settlement: Codable, Identifiable, Equatable {
     var bank: Int64
     var note: String
     var at: Date
+    var route: DeliveryRoute? = nil
     func validate(total: Int64) throws {
         try VND.check(total); try VND.check(cash); try VND.check(bank)
         guard cash + bank <= total else { throw DeliveryError.invalid("Tiền ghi nhận vượt tổng đơn. Kiểm tra khoản thừa trước khi lưu.") }
+        if let route {
+            guard outcome == .delivered else { throw DeliveryError.invalid("Chỉ chốt nhánh giao khi đã giao hàng.") }
+            switch route {
+            case .cashFull: guard cash == total && bank == 0 && mode == .cash else { throw DeliveryError.invalid("Thu đủ tiền mặt phải khớp tổng đơn.") }
+            case .transferNow: guard bank > 0 && cash + bank <= total else { throw DeliveryError.invalid("Nhập khoản chuyển thực nhận.") }
+            case .transferLater: guard bank == 0 && cash < total else { throw DeliveryError.invalid("CK sau phải còn khoản chưa thu.") }
+            case .freight: guard cash == 0 && bank == 0 else { throw DeliveryError.invalid("Giao chành bàn giao tiền cho bán hàng theo dõi.") }
+            }
+        }
         switch mode {
         case .none, .deferred:
             guard cash == 0 && bank == 0 else { throw DeliveryError.invalid("Chưa thu / CK sau phải có hai khoản bằng 0. Chọn đúng hình thức nếu đã nhận tiền.") }
@@ -100,6 +113,7 @@ struct DeliveryReport: Codable, Identifiable, Equatable {
     var text: String
     var evidenceIDs: [UUID]
     var preparedAt = Date()
+    var contentKey: String? = nil
 }
 struct DeliveryReportDraft: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -124,6 +138,8 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var sourceID: String?
     var sourceCreatedAt: Date?
     var sourceSnapshot: String?
+    var salesperson: String? = nil
+    var locationPromptedAt: Date? = nil
     var reviewNote = ""
     var note = ""
     var revision = 1
@@ -148,30 +164,71 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var remaining: Int64 { total - cash - bank }
     var verifiedBank: Int64 { bankChecks.last(where: { $0.settlementID == settlement?.id })?.amount ?? 0 }
     var activeAssignments: [SignedAssignment] { assignments.filter { a in !reversals.contains { $0.assignmentID == a.id } } }
-    var reportSent: Bool {
-        guard let report = reports.last, report.revision == revision else { return false }
-        return reportAcks.contains { $0.reportID == report.id }
+    var reportContentKey: String {
+        // Bank verification, contact/location edits and unselected photos do not invalidate a sent report.
+        let fields = [code, customer, String(total), outcome.rawValue, settlement?.mode.rawValue ?? "",
+                      String(cash), String(bank), settlement?.route?.rawValue ?? "", settlement?.note ?? ""]
+        return (try? String(data: DeliveryCoding.encode(fields), encoding: .utf8)) ?? ""
     }
-    var reportNeeded: Bool { settlement != nil && !reportSent && voidReason == nil }
+    var reportSent: Bool {
+        guard let report = reports.last else { return false }
+        let current = report.contentKey.map { $0 == reportContentKey } ?? (report.revision == revision)
+        return current && Set(report.evidenceIDs).isSubset(of: Set(activeEvidence.map(\.id))) && reportAcks.contains { $0.reportID == report.id }
+    }
+    var requiresReport: Bool { settlement != nil && settlement?.route != .cashFull }
+    var reportNeeded: Bool { requiresReport && !reportSent && voidReason == nil }
+    var taskComplete: Bool { outcome == .delivered && (settlement?.route == .cashFull || reportSent) }
+    var workflowStatus: String {
+        if voidReason != nil { return "Đã hủy" }
+        if outcome != .delivered { return outcome == .pending ? "Đang giao" : outcome.rawValue }
+        if settlement?.route == .cashFull { return "Đã giao · Tiền mặt chờ nộp" }
+        if reportNeeded { return "Đã giao · Chờ gửi ảnh" }
+        return settlement?.route == .freight ? "Đã giao chành" : "Đã hoàn tất"
+    }
     static func normalizedCode(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased().filter { !$0.isWhitespace }
     }
-    func missingEvidence() -> [EvidenceRole] {
-        var needed: [EvidenceRole] = [.invoice]
-        if settlement?.mode == .deferred || settlement?.mode == .mixed { needed.append(.signature) }
-        if bank > 0 { needed.append(.transfer) }
-        return needed.filter { role in !activeEvidence.contains { $0.role == role } }
+    var requiredReportRoles: [EvidenceRole] {
+        switch settlement?.route {
+        case .cashFull: return []
+        case .transferNow: return [.invoice, .transfer]
+        case .transferLater: return [.signature]
+        case .freight: return [.freightSignature, .goods]
+        case nil:
+            var roles: [EvidenceRole] = [.invoice]
+            if settlement?.mode == .deferred || settlement?.mode == .mixed { roles.append(.signature) }
+            if bank > 0 { roles.append(.transfer) }; return roles
+        }
     }
+    var allowedReportRoles: Set<EvidenceRole> {
+        switch settlement?.route {
+        case .cashFull: return []
+        case .transferNow: return [.invoice, .transfer]
+        case .transferLater: return [.signature]
+        case .freight: return [.freightSignature, .goods]
+        case nil: return [.invoice, .signature, .transfer]
+        }
+    }
+    func missingEvidence() -> [EvidenceRole] { requiredReportRoles.filter { role in !activeEvidence.contains { $0.role == role } } }
     var deliveryNoteForDisplay: String { InvoiceParser.cleanStoredNote(note) }
     var orderedEvidence: [DeliveryEvidence] {
-        [EvidenceRole.invoice, .signature, .transfer].flatMap { role in activeEvidence.filter { $0.role == role } }
+        [EvidenceRole.invoice, .signature, .transfer, .freightSignature, .goods].flatMap { role in activeEvidence.filter { $0.role == role } }
     }
+    var shareableEvidence: [DeliveryEvidence] { orderedEvidence.filter { allowedReportRoles.contains($0.role) } }
     var defaultShareEvidenceIDs: [UUID] {
-        let roles: Set<EvidenceRole> = bank > 0 ? [.invoice, .transfer] : [.invoice, .signature]
+        let roles: Set<EvidenceRole> = settlement?.route != nil ? allowedReportRoles : (bank > 0 ? [.invoice, .transfer] : [.invoice, .signature])
         return orderedEvidence.filter { roles.contains($0.role) }.map(\.id)
     }
     func shareText() -> String {
-        if bank > 0 { return "\(customer) đã chuyển khoản \(VND.format(bank))" }
+        if settlement?.route == .freight { return "\(customer) · Đã giao chành · \(code)" }
+        if bank > 0 {
+            let mixed = cash > 0 ? " · Tiền mặt \(VND.format(cash))" : ""
+            return "\(customer) đã chuyển khoản \(VND.format(bank))" + mixed
+        }
+        if settlement?.route == .transferLater {
+            let mixed = cash > 0 ? " · Đã thu tiền mặt \(VND.format(cash))" : ""
+            return "\(customer) · Chuyển khoản sau \(VND.format(remaining))" + mixed
+        }
         if cash > 0 { return "\(customer) đã thanh toán tiền mặt \(VND.format(cash))" }
         if settlement?.mode == .deferred { return "\(customer) · Chuyển khoản sau · \(VND.format(total))" }
         return "\(customer) · \(VND.format(total))"
@@ -216,6 +273,8 @@ struct DeliveryAudit: Codable, Identifiable, Equatable {
 }
 struct DeliveryLedger: Codable, Equatable {
     var schema = 1
+    var contacts: [DeliveryContact]? = nil
+    var places: [DeliveryPlace]? = nil
     var orders: [DeliveryOrder] = []
     var handovers: [CashHandover] = []
     var handoverReversals: [HandoverReversal] = []
@@ -255,6 +314,7 @@ struct DeliveryLedger: Codable, Equatable {
     mutating func settle(_ id: UUID, value: Settlement) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].voidReason == nil else { throw DeliveryError.invalid("Không tìm thấy hồ sơ hợp lệ.") }
         try value.validate(total: orders[i].total)
+        if value.route != nil, orders[i].activeAssignments.isEmpty { throw DeliveryError.invalid("Xác nhận đã ký nhận trước khi chốt giao.") }
         if let previous = orders[i].settlement, previous.cash == value.cash, previous.bank == value.bank,
            previous.mode == value.mode, previous.outcome == value.outcome, previous.note == value.note, previous.at == value.at { return }
         guard cashCollected - orders[i].cash + value.cash >= cashHanded else {
@@ -280,11 +340,16 @@ struct DeliveryLedger: Codable, Equatable {
             guard orders[i].missingEvidence().isEmpty else { throw DeliveryError.invalid("Thiếu: " + orders[i].missingEvidence().map(\.rawValue).joined(separator: ", ")) }
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nội dung báo cáo đang trống.") }
-        let allowed = Set(orders[i].orderedEvidence.map(\.id))
-        let evidence = evidenceIDs ?? orders[i].orderedEvidence.map(\.id)
+        if orders[i].settlement?.route == .cashFull { throw DeliveryError.invalid("Thu đủ tiền mặt không cần gửi ảnh báo cáo.") }
+        let allowed = Set(orders[i].shareableEvidence.map(\.id))
+        let evidence = evidenceIDs ?? orders[i].shareableEvidence.map(\.id)
         guard Set(evidence).count == evidence.count, Set(evidence).isSubset(of: allowed) else { throw DeliveryError.invalid("Ảnh chọn gửi không còn trong hồ sơ. Chọn lại ảnh.") }
+        if orders[i].settlement?.route != nil {
+            let selectedRoles = Set(orders[i].activeEvidence.filter { evidence.contains($0.id) }.map(\.role))
+            guard Set(orders[i].requiredReportRoles).isSubset(of: selectedRoles) else { throw DeliveryError.invalid("Chọn đủ: " + orders[i].requiredReportRoles.map(\.rawValue).joined(separator: ", ")) }
+        }
         if let previous = orders[i].reports.last, previous.revision == orders[i].revision, previous.text == text, previous.evidenceIDs == evidence { return previous }
-        let report = DeliveryReport(revision: orders[i].revision, text: text, evidenceIDs: evidence)
+        let report = DeliveryReport(revision: orders[i].revision, text: text, evidenceIDs: evidence, contentKey: orders[i].reportContentKey)
         orders[i].reports.append(report); record("Chuẩn bị báo cáo", orderID: id, report.id.uuidString)
         return report
     }
@@ -298,7 +363,7 @@ struct DeliveryLedger: Codable, Equatable {
     }
     mutating func acknowledgeReport(_ id: UUID, reportID: UUID) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), let report = orders[i].reports.last,
-              report.id == reportID, report.revision == orders[i].revision else { throw DeliveryError.invalid("Hồ sơ đã đổi. Chuẩn bị lại báo cáo trước khi xác nhận gửi.") }
+              report.id == reportID, (report.contentKey.map { $0 == orders[i].reportContentKey } ?? (report.revision == orders[i].revision)) else { throw DeliveryError.invalid("Hồ sơ đã đổi. Chuẩn bị lại báo cáo trước khi xác nhận gửi.") }
         guard !orders[i].reportAcks.contains(where: { $0.reportID == reportID }) else { return }
         orders[i].reportAcks.append(ReportAcknowledgement(reportID: reportID))
         record("Sếp xác nhận đã gửi", orderID: id, reportID.uuidString)

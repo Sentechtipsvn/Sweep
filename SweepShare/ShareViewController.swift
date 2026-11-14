@@ -14,6 +14,7 @@ final class ShareViewController: UIViewController, PHPickerViewControllerDelegat
     private var errorDetails = ""
     private var inboxReady = false
     private var saving = false
+    private var signedAt: Date?
     private var imageURL: URL?
     private var work: Task<Void, Never>?
 
@@ -55,7 +56,16 @@ final class ShareViewController: UIViewController, PHPickerViewControllerDelegat
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -20),
             stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -40)
         ])
-        work = Task { await receive() }
+        DispatchQueue.main.async { [weak self] in self?.confirmSignature() }
+    }
+    private func confirmSignature() {
+        let alert = UIAlertController(title: "Đơn này bạn đã ký chưa?", message: nil, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Đã ký", style: .default) { [weak self] _ in
+            self?.signedAt = Date(); self?.work = Task { await self?.receive() }
+        })
+        alert.addAction(UIAlertAction(title: "Bỏ qua", style: .cancel) { [weak self] _ in self?.cancelShare() })
+        present(alert, animated: true)
+
     }
 
     private func receive() async {
@@ -116,9 +126,10 @@ final class ShareViewController: UIViewController, PHPickerViewControllerDelegat
     @objc private func saveShare() {
         guard let imageURL else { return }
         saving = true; photoButton.isEnabled = false; saveButton.isEnabled = false; status.text = "Đang lưu ảnh…"
+        let signature = signedAt
         work = Task {
             do {
-                try await Task.detached(priority: .userInitiated) { _ = try SharedInvoiceInbox.live().add(imageURL) }.value
+                try await Task.detached(priority: .userInitiated) { _ = try SharedInvoiceInbox.live().add(imageURL, signedAt: signature) }.value
                 cleanup()
                 extensionContext?.completeRequest(returningItems: nil)
             } catch { saving = false; showError(error); saveButton.isEnabled = true }

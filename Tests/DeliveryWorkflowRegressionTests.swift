@@ -92,7 +92,7 @@ final class DeliveryWorkflowRegressionTests: XCTestCase {
     func testCompactCaptionUsesActualTransferAmountAndDoesNotInventPayment() throws {
         var ledger = DeliveryLedger(); let id = try ledger.insert(order("CAPTION"))
         try ledger.settle(id, value: settlement(.mixed, cash: 665_000, bank: 1_500_000, at: Date()))
-        XCTAssertEqual(ledger.orders[0].shareText(), "Khách thử đã chuyển khoản 1.500.000₫")
+        XCTAssertEqual(ledger.orders[0].shareText(), "Khách thử đã chuyển khoản 1.500.000₫ · Tiền mặt 665.000₫")
         try ledger.settle(id, value: settlement(.cash, cash: 2_165_000, bank: 0, at: Date()))
         XCTAssertEqual(ledger.orders[0].shareText(), "Khách thử đã thanh toán tiền mặt 2.165.000₫")
         try ledger.settle(id, value: settlement(.deferred, cash: 0, bank: 0, at: Date()))

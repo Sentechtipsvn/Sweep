@@ -5,6 +5,7 @@ struct ReconciliationView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var month = DeliveryMonth.start(Date())
     @State private var observedMonth = DeliveryMonth.start(Date())
+    @State private var query = ""
     @State private var accountantCount = ""
     @State private var accountantAmount = ""
     @State private var handover = false
@@ -26,6 +27,7 @@ struct ReconciliationView: View {
             }
             Section("Công giao hàng") {
                 LabeledContent("Phiếu tính công", value: "\(totals.count)").accessibilityIdentifier("audit.count")
+                LabeledContent("Tổng tiền đơn", value: VND.format(totals.commissions.reduce(0) { $0 + $1.0.total }))
                 LabeledContent("Tiền công", value: VND.format(totals.fee)).font(.headline).foregroundStyle(.green).accessibilityIdentifier("audit.fee")
                 Button("Xuất danh sách tháng (CSV)") { exportMonth() }
             }
@@ -34,6 +36,7 @@ struct ReconciliationView: View {
                 LabeledContent("Đã nộp trong tháng", value: VND.format(totals.cashHanded)).accessibilityIdentifier("audit.cashHanded")
                 LabeledContent("Chênh lệch thu − nộp", value: VND.format(totals.cashDifference)).font(.headline).accessibilityIdentifier("audit.cashDifference")
                 if totals.cashDifference < 0 { Text("Có tiền nộp từ khoản đã thu trước tháng này.").font(.caption).foregroundStyle(.secondary) }
+                LabeledContent("Còn giữ đến hiện tại · gồm tháng trước", value: VND.format(store.ledger.cashHeld)).font(.headline).accessibilityIdentifier("audit.cashHeld")
                 Button("Ghi nộp tiền") { handover = true }.accessibilityIdentifier("audit.handover")
                 NavigationLink("Lịch sử nộp trong tháng") {
                     List {
@@ -50,23 +53,19 @@ struct ReconciliationView: View {
                     }.navigationTitle("Tiền đã nộp")
                 }
             }
-            Section("Chuyển khoản trong tháng") {
-                LabeledContent("Chờ kế toán xác nhận", value: VND.format(totals.bankPending)).accessibilityIdentifier("audit.bankPending")
-                ForEach(totals.pendingOrders) { order in
-                    NavigationLink { OrderDetailView(id: order.id) } label: { LabeledContent(order.customer, value: VND.format(order.bank - order.verifiedBank)) }
-                }
-            }
-            Section {
-                DisclosureGroup("Đối chiếu với kế toán") {
-                    HStack { Text("Số phiếu"); TextField("Chưa nhập", text: $accountantCount).keyboardType(.numberPad).multilineTextAlignment(.trailing) }
-                    HStack { Text("Tiền công"); TextField("Chưa nhập", text: $accountantAmount).keyboardType(.numberPad).multilineTextAlignment(.trailing); Text("₫").foregroundStyle(.secondary) }
-                    if let count = Int(accountantCount), count >= 0 { Text("Chênh \(totals.count - count) phiếu").font(.subheadline) }
-                    if !accountantAmount.isEmpty, let amount = try? VND.parse(accountantAmount) { Text("Chênh công: \(VND.format(totals.fee - amount))").font(.subheadline) }
+            Section("Phân loại đã giao trong tháng") {
+                ForEach([DeliveryRoute.cashFull, .transferNow, .transferLater, .freight], id: \.self) { route in
+                    let orders = totals.orders.filter { $0.settlement?.route == route }
+                    NavigationLink {
+                        List(orders) { order in
+                            NavigationLink { OrderDetailView(id: order.id) } label: { VStack(alignment: .leading) { Text(order.customer); Text(order.workflowStatus).font(.caption).foregroundStyle(.secondary) } }
+                        }.navigationTitle(route.rawValue)
+                    } label: { LabeledContent(route.rawValue, value: "\(orders.count)") }
                 }
             }
             Section("Phiếu tính công · \(totals.count)") {
                 if totals.commissions.isEmpty { Text("Chưa có phiếu trong tháng.").foregroundStyle(.secondary) }
-                ForEach(totals.commissions, id: \.1.id) { order, assignment in
+                ForEach(totals.commissions.filter { query.isEmpty || ($0.0.customer + $0.0.code + $0.0.phone).localizedStandardContains(query) }, id: \.1.id) { order, assignment in
                     NavigationLink { OrderDetailView(id: order.id) } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack { Text(order.customer); Spacer(); Text(VND.format(assignment.fee)) }
@@ -76,7 +75,7 @@ struct ReconciliationView: View {
                 }
             }
         }
-        .navigationTitle("Đối soát")
+        .navigationTitle("Lịch sử").searchable(text: $query, prompt: "Tên khách, mã phiếu, số điện thoại")
         .sheet(isPresented: $handover) { HandoverView() }
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
         .onAppear { rollMonthIfNeeded() }

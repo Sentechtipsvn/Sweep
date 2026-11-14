@@ -6,6 +6,9 @@ struct OrderDetailView: View {
     @EnvironmentObject private var store: DeliveryStore
     @State private var preview: URL?
     @State private var settle = false
+    @State private var method: DeliveryMethod?
+    @State private var saveLocation = false
+    @State private var locationPrompt = false
     @State private var sign = false
     @State private var edit = false
     @State private var void = false
@@ -20,22 +23,34 @@ struct OrderDetailView: View {
                 VStack(spacing: 0) {
                     List {
                         Section {
-                            Text(order.customer).font(.title2.bold()).textSelection(.enabled)
-                            LabeledContent("Tổng đơn", value: VND.format(order.total)).font(.headline)
-                            LabeledContent("Mã phiếu", value: order.code).textSelection(.enabled)
-                            if let date = order.invoiceAt { LabeledContent("Ngày hóa đơn", value: date.formatted(date: .numeric, time: .omitted)) }
                             if let invoice = order.activeEvidence.first(where: { $0.role == .invoice }) {
-                                Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 200) }.buttonStyle(.plain)
+                                Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 230) }.buttonStyle(.plain)
+                                    .overlay(alignment: .topTrailing) {
+                                        Menu {
+                                            if let seller = order.salesperson, let contact = (store.ledger.contacts ?? []).first(where: { $0.matches(seller) }) {
+                                                if let u = phoneURL(contact.phone) { Link("Gọi \(contact.name)", destination: u) }
+                                                if let u = URL(string: contact.zalo), !contact.zalo.isEmpty { Link("Zalo \(contact.name)", destination: u) }
+                                            } else {
+                                                NavigationLink("Thêm liên hệ bán hàng") { ContactEditor(initialName: order.salesperson ?? "", role: "Bán hàng") }
+                                            }
+                                        } label: { Image(systemName: "ellipsis.circle.fill").font(.title).symbolRenderingMode(.palette).foregroundStyle(.blue, .white).padding(8) }.accessibilityLabel("Liên hệ bán hàng")
+                                    }
                             }
-                            HStack {
-                                if let url = phoneURL(order.phone) { Link(destination: url) { Label("Gọi", systemImage: "phone") } }
-                                if !order.address.isEmpty {
-                                    Button { openDirections(order.address) } label: { Label("Chỉ đường", systemImage: "map") }.accessibilityIdentifier("order.directions")
+                            HStack { Text(order.customer).font(.title3.bold()); Spacer(); Text(VND.format(order.total)).font(.headline).monospacedDigit() }
+                            Text(order.code).font(.caption).foregroundStyle(.secondary)
+                            if !order.address.isEmpty {
+                                Text(order.address).textSelection(.enabled)
+                                Button { openDirections(order.address) } label: { Label("Google Maps", systemImage: "location") }.buttonStyle(SweepPill()).accessibilityIdentifier("order.directions")
+                            }
+                            if let u = phoneURL(order.phone) { Link(destination: u) { Label(order.phone, systemImage: "phone.fill").frame(maxWidth: .infinity, minHeight: 44) }.buttonStyle(SweepPill()) }
+                            NavigationLink { OrderQRView(id: id) } label: { Label("QR chuyển khoản", systemImage: "qrcode") }.accessibilityIdentifier("order.qr")
+                        }
+                        if order.voidReason == nil {
+                            Section {
+                                ForEach([DeliveryMethod.cash, .bank, .freight]) { item in
+                                    Button(item.rawValue) { method = item }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("method.\(item.id)")
                                 }
-                                NavigationLink { OrderQRView(id: id) } label: { Label("QR chuyển khoản", systemImage: "qrcode") }.accessibilityIdentifier("order.qr")
-                            }.font(.subheadline).buttonStyle(.bordered)
-                            if !order.phone.isEmpty { Text(order.phone).font(.caption).textSelection(.enabled) }
-                            if !order.address.isEmpty { Text(order.address).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                            }.disabled(order.activeAssignments.isEmpty)
                         }
                         Section("Ký nhận và công đơn") {
                             if let assignment = order.assignments.first {
@@ -50,15 +65,15 @@ struct OrderDetailView: View {
                             LabeledContent("Kết quả", value: order.outcome.rawValue)
                             LabeledContent("Tiền mặt đã thu", value: VND.format(order.cash))
                             LabeledContent("CK khách báo", value: VND.format(order.bank))
-                            LabeledContent("CK đã đối soát", value: VND.format(order.verifiedBank))
+
                             LabeledContent("Còn lại theo ghi nhận", value: VND.format(order.remaining)).foregroundStyle(order.remaining > 0 ? .orange : .primary)
                             if let value = order.settlement {
                                 Text(value.at.formatted(date: .numeric, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                                 if !value.note.isEmpty { Text(value.note).font(.footnote) }
                             }
-                            if order.bank > order.verifiedBank { Button("Xác nhận CK đã vào công ty…") { reason = ""; bank = true } }
+
                         }
-                        ForEach([EvidenceRole.invoice, .signature, .transfer], id: \.self) { role in
+                        ForEach([EvidenceRole.invoice, .signature, .transfer, .freightSignature, .goods].filter { role in role == .invoice || order.allowedReportRoles.contains(role) || order.activeEvidence.contains(where: { $0.role == role }) }, id: \.self) { role in
                             Section(role.rawValue) {
                                 let files = order.activeEvidence.filter { $0.role == role }
                                 if !files.isEmpty {
@@ -76,10 +91,11 @@ struct OrderDetailView: View {
                                 if order.voidReason == nil { EvidencePicker(title: "Bổ sung \(role.rawValue.lowercased())") { url in await store.attach(url, role: role, to: id) } }
                             }
                         }
-                        Section("Chia sẻ") {
+                        if order.requiresReport { Section("Chia sẻ") {
                             Label(order.reportSent ? "Đã gửi" : "Chưa gửi", systemImage: order.reportSent ? "checkmark.circle.fill" : "paperplane")
                                 .foregroundStyle(order.reportSent ? .green : .secondary)
                             NavigationLink { OrderReportView(id: id) } label: { Label("Chia sẻ đơn", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("order.report")
+                        }
                         }
                         if !order.reviewNote.isEmpty {
                             Section("Dữ liệu cũ cần rà soát") {
@@ -113,14 +129,17 @@ struct OrderDetailView: View {
                             else { Text("Đã hủy: \(order.voidReason ?? "")").foregroundStyle(.secondary) }
                         }
                     }
-                    if order.voidReason == nil {
-                        Button { settle = true } label: {
-                            Label("Chốt giao / thu tiền", systemImage: "checkmark.circle")
-                                .font(.headline).frame(maxWidth: .infinity, minHeight: 36)
-                        }
-                        .buttonStyle(.borderedProminent).padding(12).background(.bar).accessibilityIdentifier("order.settle")
-                    }
                 }
+                .sheet(item: $method) { DeliveryFlowView(id: id, method: $0) }
+                .sheet(isPresented: $saveLocation) { NavigationStack { PlaceEditor(order: order) } }
+                .onChange(of: order.taskComplete) { _, done in
+                    if done && order.locationPromptedAt == nil && !store.ledger.hasPlace(for: order) && !order.address.isEmpty { locationPrompt = true }
+                }
+                .alert("Lưu vị trí giao hàng?", isPresented: $locationPrompt) {
+                    Button("Lưu vị trí") { markLocationPrompt(); saveLocation = true }
+                    Button("Để sau", role: .cancel) { markLocationPrompt() }
+                }
+
                 .sheet(isPresented: $settle) { SettlementView(order: order) }
                 .sheet(isPresented: $sign) { SignAssignmentView(id: id) }
                 .sheet(isPresented: $edit) { EditOrderView(order: order) }
@@ -129,11 +148,6 @@ struct OrderDetailView: View {
                     Button("Hủy hồ sơ", role: .destructive) { _ = store.change { try $0.void(id, reason: reason) } }
                     Button("Giữ hồ sơ", role: .cancel) {}
                 } message: { Text("Giữ lịch sử và chứng từ; điều chỉnh công đã ghi. Hồ sơ có khoản thu phải được rà soát tiền trước.") }
-                .alert("Công ty đã xác nhận nhận CK?", isPresented: $bank) {
-                    TextField("Ai / nội dung xác nhận", text: $reason)
-                    Button("Ghi nhận đối soát") { _ = store.change { try $0.verifyBank(id, note: reason) } }
-                    Button("Để sau", role: .cancel) {}
-                } message: { Text("Ảnh khách chuyển khoản chưa đủ để xác nhận tiền đã vào công ty. Chỉ ghi nhận khi Sếp có thông tin từ công ty.") }
                 .alert("Loại ảnh khỏi bộ báo cáo?", isPresented: $excluding) {
                     TextField("Lý do / ảnh bổ sung thay thế", text: $reason)
                     Button("Loại khỏi báo cáo", role: .destructive) { if let excludedFile { _ = store.change { try $0.excludeEvidence(excludedFile, orderID: id, reason: reason) } } }
@@ -145,6 +159,11 @@ struct OrderDetailView: View {
         .toolbar { if order?.voidReason == nil { Button("Sửa") { edit = true } } }
         .quickLookPreview($preview)
         .disabled(store.busy)
+    }
+    private func markLocationPrompt() {
+        _ = store.change { ledger in
+            if let i = ledger.orders.firstIndex(where: { $0.id == id }) { ledger.orders[i].locationPromptedAt = Date() }
+        }
     }
     private func phoneURL(_ text: String) -> URL? {
         let number = text.filter { $0.isNumber || $0 == "+" }
@@ -310,6 +329,9 @@ struct OrderReportView: View {
                         if store.change({ try $0.saveReportDraft(id, text: text) }) { draftSaved = true }
                     }
                 }
+                ForEach(order.requiredReportRoles.filter { role in !order.activeEvidence.contains { $0.role == role } }, id: \.self) { role in
+                    Section(role.rawValue) { EvidencePicker(title: "Bổ sung ảnh") { url in await store.attach(url, role: role, to: id) } }
+                }
                 Section("Ảnh gửi · \(selectedIDs.count)") {
                     ForEach(selectedIDs, id: \.self) { fileID in
                         if let file = order.orderedEvidence.first(where: { $0.id == fileID }) {
@@ -332,7 +354,7 @@ struct OrderReportView: View {
                     Section {
                         Button("Chia sẻ nội dung và ảnh") { share(prepared, order: order, includeText: true) }.accessibilityIdentifier("report.share")
                         Button("Chỉ gửi ảnh") { share(prepared, order: order, includeText: false) }.disabled(selectedIDs.isEmpty)
-                        Button(order.reportSent ? "Đã xác nhận gửi" : "Tôi đã gửi báo cáo…") { confirm = true }
+                        Button(order.reportSent ? "Đã xác nhận gửi" : "Đã gửi nhóm…") { confirm = true }
                             .disabled(order.reportSent).accessibilityIdentifier("report.ack")
                     }
                 }
@@ -351,13 +373,13 @@ struct OrderReportView: View {
         .onChange(of: text) { _, _ in copied = false; draftSaved = false }
         .onChange(of: store.order(id)?.shareText()) { _, caption in if let caption { text = caption; prepared = nil } }
         .onChange(of: store.order(id)?.orderedEvidence.map(\.id)) { _, ids in
-            let valid = Set(ids ?? []); selectedIDs.removeAll { !valid.contains($0) }; prepared = nil
+            let valid = Set(ids ?? []); selectedIDs.removeAll { !valid.contains($0) }; if let order = store.order(id) { for added in order.defaultShareEvidenceIDs where !selectedIDs.contains(added) { selectedIDs.append(added) } }; prepared = nil
         }
         .sheet(isPresented: $choosingImages) {
             NavigationStack {
                 List {
                     if let order = store.order(id) {
-                        ForEach(order.orderedEvidence) { file in
+                        ForEach(order.shareableEvidence) { file in
                             Button {
                                 if selectedIDs.contains(file.id) { selectedIDs.removeAll { $0 == file.id } }
                                 else { selectedIDs.append(file.id) }
@@ -375,7 +397,7 @@ struct OrderReportView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Xong") { choosingImages = false }.accessibilityIdentifier("report.imagesDone") } }
             }
         }
-        .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
+        .sheet(item: $sharing, onDismiss: { confirm = true }) { DeliveryShareSheet(items: $0.items) }
         .quickLookPreview($preview)
         .alert("Đã gửi nội dung và ảnh đã chọn?", isPresented: $confirm) {
             Button("Đúng, đã gửi") { if let prepared { _ = store.change { try $0.acknowledgeReport(id, reportID: prepared.id) } } }
@@ -383,8 +405,11 @@ struct OrderReportView: View {
         }
     }
     private func share(_ report: DeliveryReport, order: DeliveryOrder, includeText: Bool) {
-        let urls = report.evidenceIDs.compactMap { id in order.evidence.first { $0.id == id }.map { store.url($0) } }
-        sharing = DeliveryShare(items: (includeText ? [report.text as Any] : []) + urls.map { $0 as Any })
+        Task {
+            if let urls = await store.outgoing(report, order: order) {
+                sharing = DeliveryShare(items: (includeText ? [report.text as Any] : []) + urls.map { $0 as Any })
+            }
+        }
     }
 }
 

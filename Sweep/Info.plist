@@ -11,6 +11,9 @@
     <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>LSApplicationQueriesSchemes</key><array><string>comgooglemaps</string></array>
+    <key>UIFileSharingEnabled</key><true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+    <key>NSLocationWhenInUseUsageDescription</key><string>Sweep lưu vị trí giao hàng khi Sếp chọn Lấy vị trí hiện tại.</string>
     <key>UILaunchScreen</key><dict/>
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UISupportedInterfaceOrientations</key><array>

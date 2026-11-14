@@ -34,13 +34,13 @@ jobs:
       - name: Package IPA with verifiable App Group metadata for AltStore
         run: |
           python3 Tools/package_ipa.py --app build/Build/Products/Release-iphoneos/Sweep.app \
-            --output dist/Sweep-0.4.0-AltStore.ipa
+            --output dist/Sweep-0.5.0-AltStore.ipa
       - name: Upload app for AltStore signing
         uses: actions/upload-artifact@v4
         with:
-          name: Sweep-0.4.0-AltStore
+          name: Sweep-0.5.0-AltStore
           path: |
-            dist/Sweep-0.4.0-AltStore.ipa
+            dist/Sweep-0.5.0-AltStore.ipa
             dist/SHA256.txt
             dist/SIGNING-METADATA.json
           retention-days: 14
@@ -82,7 +82,8 @@ jobs:
             -only-testing:SweepUITests/SweepUITests/testSharedImageReviewImportQRSetupAndRelaunch \
             -only-testing:SweepUITests/SweepUITests/testReportImageSelectionAndCompactTransferCaption \
             -only-testing:SweepUITests/SweepUITests/testReconciliationEmptyMonthHasNoFiguresFromAnotherMonth \
-            -only-testing:SweepUITests/SweepUITests/testIntakeHasOnlyPhotoAndCameraSourcesAtLargeTextSize test | tee simulator-test.log
+            -only-testing:SweepUITests/SweepUITests/testIntakeHasOnlyPhotoAndCameraSourcesAtLargeTextSize \
+            -only-testing:SweepUITests/SweepUITests/testApprovedCashWorkflowAndNewTools test | tee simulator-test.log
       - name: Export screenshots
         if: always()
         run: |

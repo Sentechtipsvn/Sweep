@@ -8,6 +8,7 @@ struct SharedInvoiceInbox {
         let receivedAt: Date
         let evidence: DeliveryEvidence
         let directory: URL
+        var signedAt: Date? = nil
         var image: URL { directory.appendingPathComponent(evidence.filename) }
         var sourceID: String { "share:" + id.uuidString }
     }
@@ -20,6 +21,7 @@ struct SharedInvoiceInbox {
         let id: UUID
         let receivedAt: Date
         let evidence: DeliveryEvidence
+        var signedAt: Date? = nil
     }
     let directory: URL
 
@@ -41,7 +43,7 @@ struct SharedInvoiceInbox {
         throw DeliveryError.invalid("Tiện ích đã mở nhưng chưa truy cập được hộp thư chung. \(details) Dùng bản IPA dành cho AltStore, giữ tiện ích mở rộng khi cài. Nếu vẫn lỗi, gửi lại thông báo này để kiểm tra quyền nhóm; ảnh chưa được nhận vào Sweep.")
     }
 
-    @discardableResult func add(_ source: URL) throws -> Item {
+    @discardableResult func add(_ source: URL, signedAt: Date? = nil) throws -> Item {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let id = UUID(), date = Date()
@@ -50,10 +52,10 @@ struct SharedInvoiceInbox {
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fm.removeItem(at: staging) }
         let image = try EvidenceFiles.importImage(source, role: .invoice, directory: staging)
-        let manifest = Manifest(id: id, receivedAt: date, evidence: image)
+        let manifest = Manifest(id: id, receivedAt: date, evidence: image, signedAt: signedAt)
         try DeliveryCoding.encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
         try fm.moveItem(at: staging, to: destination)
-        return Item(id: id, receivedAt: date, evidence: image, directory: destination)
+        return Item(id: id, receivedAt: date, evidence: image, directory: destination, signedAt: signedAt)
     }
 
     func scan() throws -> Scan {
@@ -76,7 +78,7 @@ struct SharedInvoiceInbox {
                       file.bytes > 0, file.bytes <= EvidenceFiles.maximumBytes else { throw DeliveryError.invalid("Thông tin ảnh không hợp lệ.") }
                 let properties = try folder.appendingPathComponent(file.filename).resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey])
                 guard properties.isSymbolicLink != true, let bytes = properties.fileSize, Int64(bytes) == file.bytes else { throw DeliveryError.invalid("Ảnh chưa đủ dữ liệu.") }
-                result.items.append(Item(id: manifest.id, receivedAt: manifest.receivedAt, evidence: file, directory: folder))
+                result.items.append(Item(id: manifest.id, receivedAt: manifest.receivedAt, evidence: file, directory: folder, signedAt: manifest.signedAt))
             } catch { result.warnings.append("Một ảnh chờ nhận chưa đọc được, vẫn được giữ lại: " + error.localizedDescription) }
         }
         result.items.sort { $0.receivedAt < $1.receivedAt }

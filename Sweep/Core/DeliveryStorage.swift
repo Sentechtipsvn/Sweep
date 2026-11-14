@@ -48,6 +48,9 @@ final class DeliveryDatabase {
         let ledger = try DeliveryCoding.decode(DeliveryLedger.self, from: Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0))))
         try ledger.validate(); return ledger
     }
+    func purgePreviousSnapshot() throws {
+        try execute("DELETE FROM ledger WHERE id=2; PRAGMA wal_checkpoint(TRUNCATE); VACUUM;")
+    }
     func save(_ ledger: DeliveryLedger, replacing: Bool = false) throws {
         try ledger.validate()
         let data = try DeliveryCoding.encode(ledger)

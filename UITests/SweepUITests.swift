@@ -40,15 +40,15 @@ final class SweepUITests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--monthly-ui-testing"]
         app.launch()
         XCTAssertTrue(app.buttons["order.TEST-001"].waitForExistence(timeout: 20))
-        app.tabBars.buttons["Đối soát"].tap()
+        app.tabBars.buttons["Lịch sử"].tap()
         assertRow("audit.count", contains: "1", in: app)
         assertRow("audit.cashCollected", contains: "665.000₫", in: app)
         assertRow("audit.cashHanded", contains: "500.000₫", in: app)
-        assertRow("audit.bankPending", contains: "1.500.000₫", in: app)
+        assertRow("audit.cashHeld", contains: "165.000₫", in: app)
         attach(app, name: "audit-current-month")
         app.swipeDown(); app.swipeDown()
         app.buttons["audit.previous"].tap()
-        for id in ["audit.count", "audit.fee", "audit.cashCollected", "audit.cashHanded", "audit.cashDifference", "audit.bankPending"] {
+        for id in ["audit.count", "audit.fee", "audit.cashCollected", "audit.cashHanded", "audit.cashDifference"] {
             assertRow(id, contains: id == "audit.count" ? "0" : "0₫", in: app)
         }
         XCTAssertFalse(app.staticTexts["665.000₫"].exists)
@@ -66,6 +66,7 @@ final class SweepUITests: XCTestCase {
         app.launch()
         let newOrder = app.buttons["orders.new"]
         XCTAssertTrue(newOrder.waitForExistence(timeout: 20)); newOrder.tap()
+        XCTAssertTrue(app.alerts.buttons["Đã ký"].waitForExistence(timeout: 5)); app.alerts.buttons["Đã ký"].tap()
         let photos = app.buttons["evidence.photos"], camera = app.buttons["evidence.camera"]
         XCTAssertTrue(photos.waitForExistence(timeout: 10)); XCTAssertTrue(camera.exists)
         XCTAssertTrue(photos.label.contains("Chọn ảnh")); XCTAssertTrue(camera.label.contains("Chụp ảnh"))
@@ -95,6 +96,7 @@ final class SweepUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--shared-ui-testing"]
         app.launch()
+        XCTAssertTrue(app.alerts.buttons["Đã ký"].waitForExistence(timeout: 20)); app.alerts.buttons["Đã ký"].tap()
         let code = app.textFields["intake.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 20))
         let populated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "TEST-7856"), object: code)
@@ -174,7 +176,7 @@ final class SweepUITests: XCTestCase {
         attach(app, name: "05-report-awaiting-confirmation")
         ack.tap(); app.alerts.buttons["Đúng, đã gửi"].tap()
         XCTAssertTrue(app.buttons["report.ack"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["report.ack"].isEnabled)
-        app.tabBars.buttons["Đối soát"].tap()
+        app.tabBars.buttons["Lịch sử"].tap()
         XCTAssertTrue(app.staticTexts["5.000₫"].firstMatch.waitForExistence(timeout: 5))
         attach(app, name: "06-reconciliation")
         app.terminate()
@@ -195,6 +197,7 @@ final class SweepUITests: XCTestCase {
         app.buttons["orders.receive"].tap(); app.buttons["orders.bill"].tap()
         let candidate = app.buttons["bill.candidate.bill:ui-fixture"]
         XCTAssertTrue(candidate.waitForExistence(timeout: 15)); candidate.tap()
+        XCTAssertTrue(app.alerts.buttons["Đã ký"].waitForExistence(timeout: 5)); app.alerts.buttons["Đã ký"].tap()
         let code = app.textFields["intake.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 15))
         let populated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "TEST-7856"), object: code)
@@ -207,7 +210,7 @@ final class SweepUITests: XCTestCase {
         // LabeledContent exposes its value through the row, not a separate StaticText.
         // Wait for both sheets to finish dismissing before observing the detail screen.
         XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.staticTexts["Mã phiếu"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["TEST-7856"].waitForExistence(timeout: 10))
         attach(app, name: "09-bill-saved-order")
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--bill-ui-testing"]
@@ -215,7 +218,7 @@ final class SweepUITests: XCTestCase {
         let persisted = app.buttons["order.TEST-7856"]
         XCTAssertTrue(persisted.waitForExistence(timeout: 15))
         XCTAssertEqual(app.buttons.matching(identifier: "order.TEST-7856").count, 1)
-        XCTAssertTrue(app.staticTexts["Chưa tính công"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Đã tính công"].firstMatch.exists)
         attach(app, name: "10-bill-persisted-list")
         app.buttons["orders.receive"].tap(); app.buttons["orders.bill"].tap()
         let existing = app.buttons["bill.existing.bill:ui-fixture"]
@@ -226,6 +229,27 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(persisted.waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons.matching(identifier: "order.TEST-7856").count, 1)
         attach(app, name: "11-bill-no-duplicate")
+    }
+
+    func testApprovedCashWorkflowAndNewTools() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery"]
+        app.launch()
+        XCTAssertTrue(app.buttons["order.TEST-001"].waitForExistence(timeout: 20)); app.buttons["order.TEST-001"].tap()
+        reveal(app.buttons["order.sign"], in: app); app.buttons["order.sign"].tap(); app.buttons["sign.confirm"].tap(); app.buttons["sign.save"].tap()
+        app.swipeDown(); app.swipeDown()
+        reveal(app.buttons["method.Tiền mặt"], in: app); app.buttons["method.Tiền mặt"].tap()
+        XCTAssertTrue(app.buttons["flow.cashFull"].waitForExistence(timeout: 10)); app.buttons["flow.cashFull"].tap()
+        app.alerts.buttons["Đã nhận đủ"].tap()
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 10))
+        attach(app, name: "approved-cash-full-no-report")
+        app.tabBars.buttons["Lịch sử"].tap(); assertRow("audit.cashHeld", contains: "2.165.000₫", in: app)
+        app.tabBars.buttons["Công cụ"].tap()
+        XCTAssertTrue(app.buttons["Vị trí"].waitForExistence(timeout: 10)); XCTAssertTrue(app.buttons["Dọn dẹp"].exists); XCTAssertTrue(app.buttons["Liên hệ"].exists)
+        attach(app, name: "approved-seven-svg-tools")
+        app.buttons["Dọn dẹp"].tap(); XCTAssertTrue(app.buttons["maintenance.reset"].waitForExistence(timeout: 10))
+        attach(app, name: "approved-maintenance-backup-before-reset")
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
