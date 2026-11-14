@@ -2,6 +2,16 @@ import XCTest
 @testable import SweepCore
 
 final class PayrollTests: XCTestCase {
+    func testNewMonthCarriesOnlyPolicyAndKeepsRecordedMonthIndependent() throws {
+        let first = ready(date()); var book = PayrollBook(); try book.put(first)
+        var next = book.period(date(2026, 10))
+        XCTAssertEqual(next.policy, first.policy); XCTAssertTrue(next.entries.isEmpty)
+        XCTAssertNil(next.fuel); XCTAssertTrue(next.advances.isEmpty)
+        try book.put(next)
+        var changed = first; changed.policy.meal = 99_000; try book.put(changed)
+        next = book.period(date(2026, 10))
+        XCTAssertEqual(next.policy.meal, 30_000)
+    }
     func date(_ year: Int = 2026, _ month: Int = 9, _ day: Int = 1) -> Date {
         PayrollDates.calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
     }

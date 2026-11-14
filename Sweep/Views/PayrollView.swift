@@ -19,72 +19,15 @@ struct PayrollView: View {
     private var year: Int { PayrollDates.calendar.component(.year, from: month) }
     var body: some View {
         List {
-            Section {
-                HStack {
-                    Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.buttonStyle(.borderless)
-                    Spacer()
-                    Text("Tháng \(PayrollDates.calendar.component(.month, from: month)) / \(year)").font(.headline)
-                    Spacer()
-                    Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.buttonStyle(.borderless)
-                }
-                Label(closed == nil ? "Lương tạm tính" : "Bảng lương đã chốt", systemImage: closed == nil ? "clock" : "lock.fill")
-                    .font(.caption).foregroundStyle(closed == nil ? Color.secondary : Color.green)
-                Text(VND.format(result.net)).font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
-                    .accessibilityIdentifier("payroll.net")
-                HStack {
-                    summary("Công", units: result.workUnits)
-                    Spacer()
-                    summary("Nghỉ", units: result.leaveUnits)
-                    Spacer()
-                    VStack { Text("\(result.commissions)").font(.headline); Text("Đơn").font(.caption).foregroundStyle(.secondary) }
-                }
-                if !period.policy.confirmed { Label("Chọn lịch làm việc và xác nhận mức lương trước khi chốt.", systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(.orange) }
-                if result.missingDays > 0 { Text("\(result.missingDays) ngày làm việc chưa chấm; ngày trống không tự coi là nghỉ.").font(.footnote).foregroundStyle(.secondary) }
-            }
-            Section("Chấm công") { calendar }
-            Section("Phép năm \(year)") {
-                LabeledContent("Đã nghỉ / hạn mức", value: "\(units(book.annualLeaveUnits(year: year))) / 12 ngày")
-                let remaining = 24 - book.annualLeaveUnits(year: year)
-                Text(remaining < 0 ? "Vượt \(units(-remaining)) ngày. Vẫn giữ toàn bộ ngày nghỉ để đối chiếu." : "Còn \(units(remaining)) ngày phép không lương.")
-                    .font(.footnote).foregroundStyle(remaining < 0 ? Color.red : Color.secondary)
-                Text("Nghỉ quá 3 ngày/tháng mất chuyên cần. Đúng 3 ngày vẫn giữ.").font(.footnote).foregroundStyle(.secondary)
-            }
-            Section("Các khoản tháng này") {
-                ForEach(result.rows, id: \.0) { label, value in
-                    LabeledContent(label, value: label == "Xăng xe" && !result.fuelConfirmed ? "Chờ chốt giá" : VND.format(value))
-                }
-                LabeledContent("Công chuẩn", value: units(result.plannedUnits) + " ngày")
-                LabeledContent("Chốt lương", value: PayrollDates.closeDay(month).formatted(date: .numeric, time: .omitted))
-                LabeledContent("Ngày chốt giá xăng", value: PayrollDates.fuelDay(month).formatted(date: .numeric, time: .omitted))
-                if let fuel = period.fuel {
-                    Text("\(fuel.price)₫/lít · \(fuel.source)").font(.footnote).foregroundStyle(.secondary)
-                } else {
-                    Text("Giá ngày 30 áp dụng cho cả tháng; tháng 2 dùng ngày cuối tháng. Không có giá đúng thì để chờ chốt.").font(.footnote).foregroundStyle(.orange)
-                }
-            }
-            Section("Tạm ứng") {
-                ForEach(period.advances) { item in
-                    VStack(alignment: .leading) {
-                        LabeledContent(item.day.formatted(date: .numeric, time: .omitted), value: VND.format(item.amount))
-                        if !item.note.isEmpty { Text(item.note).font(.caption).foregroundStyle(.secondary) }
-                    }
-                }
-                if closed == nil { Button("Thêm khoản tạm ứng", systemImage: "plus.circle") { advance = true } }
-            }
-            Section {
-                if closed == nil {
-                    Button("Cấu hình lương và giá xăng", systemImage: "slider.horizontal.3") { configure = true }.accessibilityIdentifier("payroll.configure")
-                    Button("Chốt bảng lương tháng", systemImage: "lock") { confirmClose = true }.disabled(store.busy || store.blocked)
-                        .accessibilityIdentifier("payroll.close")
-                } else {
-                    Button("Mở khóa để điều chỉnh", systemImage: "lock.open") { reason = ""; reopen = true }
-                }
-                Button("Xuất bảng lương CSV", systemImage: "square.and.arrow.up") { exportCSV() }
-            }
-            Section {
-                Text("Chấm công thủ công; đơn đã ký chỉ gợi ý ngày đi làm. Tiền thu hộ không cộng vào lương. Mức tiền và lịch làm việc áp dụng theo cấu hình tháng.").font(.footnote).foregroundStyle(.secondary)
-            }
+            monthSummarySection
+            attendanceSection
+            annualLeaveSection
+            salaryBreakdownSection
+            advancesSection
+            payrollActionsSection
+            payrollHelpSection
         }.navigationTitle("Chấm công & lương").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { configure = true } label: { Image(systemName: "slider.horizontal.3") }.disabled(closed != nil).accessibilityLabel("Cấu hình lương") } }
             .sheet(item: $day) { item in
                 NavigationStack { AttendanceEditor(day: item.date, existing: period.entry(item.date), suggested: hasAssignment(item.date)) }
             }
@@ -111,8 +54,95 @@ struct PayrollView: View {
                 Button("Hủy", role: .cancel) {}
             } message: { Text("Bản lương đã chốt vẫn lưu trong lịch sử; Sếp điều chỉnh rồi chốt thành bản mới.") }
     }
+    private var monthSummarySection: some View {
+            Section {
+                HStack {
+                    Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.buttonStyle(.borderless)
+                    Spacer()
+                    Text("Tháng \(PayrollDates.calendar.component(.month, from: month)) / \(year)").font(.headline)
+                    Spacer()
+                    Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.buttonStyle(.borderless)
+                }
+                Label(closed == nil ? "Lương tạm tính" : "Bảng lương đã chốt", systemImage: closed == nil ? "clock" : "lock.fill")
+                    .font(.caption).foregroundStyle(closed == nil ? Color.secondary : Color.green)
+                Text(period.policy.confirmed ? VND.format(result.net) : "Chưa cấu hình lương").font(.system(period.policy.confirmed ? .largeTitle : .title2, design: .rounded, weight: .bold)).monospacedDigit()
+                    .accessibilityIdentifier("payroll.net")
+                HStack {
+                    summary("Công", units: result.workUnits)
+                    Spacer()
+                    summary("Nghỉ", units: result.leaveUnits)
+                    Spacer()
+                    VStack { Text("\(result.commissions)").font(.headline); Text("Đơn").font(.caption).foregroundStyle(.secondary) }
+                }
+                if !period.policy.confirmed { Label("Chọn lịch làm việc và xác nhận mức lương trước khi chốt.", systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(.orange) }
+                if result.missingDays > 0 { Text("\(result.missingDays) ngày làm việc chưa chấm; ngày trống không tự coi là nghỉ.").font(.footnote).foregroundStyle(.secondary) }
+            }
+    }
+
+    private var attendanceSection: some View {
+            Section("Chấm công") { calendar }
+    }
+
+    private var annualLeaveSection: some View {
+            Section("Phép năm \(year)") {
+                LabeledContent("Đã nghỉ / hạn mức", value: "\(units(book.annualLeaveUnits(year: year))) / 12 ngày")
+                let remaining = 24 - book.annualLeaveUnits(year: year)
+                Text(remaining < 0 ? "Vượt \(units(-remaining)) ngày. Vẫn giữ toàn bộ ngày nghỉ để đối chiếu." : "Còn \(units(remaining)) ngày phép không lương.")
+                    .font(.footnote).foregroundStyle(remaining < 0 ? Color.red : Color.secondary)
+                Text("Nghỉ quá 3 ngày/tháng mất chuyên cần. Đúng 3 ngày vẫn giữ.").font(.footnote).foregroundStyle(.secondary)
+            }
+    }
+
+    private var salaryBreakdownSection: some View {
+            Section("Các khoản tháng này") {
+                ForEach(result.rows, id: \.0) { label, value in
+                    LabeledContent(label, value: !period.policy.confirmed ? "Chưa cấu hình" : label == "Xăng xe" && !result.fuelConfirmed ? "Chờ chốt giá" : VND.format(value))
+                }
+                LabeledContent("Công chuẩn", value: units(result.plannedUnits) + " ngày")
+                LabeledContent("Chốt lương", value: PayrollDates.closeDay(month).formatted(date: .numeric, time: .omitted))
+                LabeledContent("Ngày chốt giá xăng", value: PayrollDates.fuelDay(month).formatted(date: .numeric, time: .omitted))
+                if let fuel = period.fuel {
+                    Text("\(fuel.price)₫/lít · \(fuel.source)").font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    Text("Giá ngày 30 áp dụng cho cả tháng; tháng 2 dùng ngày cuối tháng. Không có giá đúng thì để chờ chốt.").font(.footnote).foregroundStyle(.orange)
+                }
+            }
+    }
+
+    private var advancesSection: some View {
+            Section("Tạm ứng") {
+                ForEach(period.advances) { item in
+                    VStack(alignment: .leading) {
+                        LabeledContent(item.day.formatted(date: .numeric, time: .omitted), value: VND.format(item.amount))
+                        if !item.note.isEmpty { Text(item.note).font(.caption).foregroundStyle(.secondary) }
+                    }
+                }
+                if closed == nil { Button("Thêm khoản tạm ứng", systemImage: "plus.circle") { advance = true } }
+            }
+    }
+
+    private var payrollActionsSection: some View {
+            Section {
+                if closed == nil {
+                    Button("Cấu hình lương và giá xăng", systemImage: "slider.horizontal.3") { configure = true }.accessibilityIdentifier("payroll.configure")
+                    Button("Chốt bảng lương tháng", systemImage: "lock") { confirmClose = true }.disabled(store.busy || store.blocked)
+                        .accessibilityIdentifier("payroll.close")
+                } else {
+                    Button("Mở khóa để điều chỉnh", systemImage: "lock.open") { reason = ""; reopen = true }
+                }
+                Button("Xuất bảng lương CSV", systemImage: "square.and.arrow.up") { exportCSV() }
+            }
+    }
+
+    private var payrollHelpSection: some View {
+            Section {
+                Text("Chấm công thủ công; đơn đã ký chỉ gợi ý ngày đi làm. Tiền thu hộ không cộng vào lương. Mức tiền và lịch làm việc áp dụng theo cấu hình tháng.").font(.footnote).foregroundStyle(.secondary)
+            }
+    }
+
     private var calendar: some View {
         let days = PayrollDates.days(month)
+        let assignments = signedDays
         let offset = (PayrollDates.calendar.component(.weekday, from: days[0]) + 5) % 7
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
             ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) { Text($0).font(.caption2).foregroundStyle(.secondary) }
@@ -123,7 +153,7 @@ struct PayrollView: View {
                     Button { day = AttendanceDay(date: date) } label: {
                         VStack(spacing: 2) {
                             Text("\(PayrollDates.calendar.component(.day, from: date))").font(.subheadline.weight(.medium))
-                            Text(value == .work ? "✓" : value == .half ? "½" : value == .leave ? "N" : value == .off ? "—" : hasAssignment(date) ? "•" : " ").font(.caption)
+                            Text(value == .work ? "✓" : value == .half ? "½" : value == .leave ? "N" : value == .off ? "—" : assignments.contains(date) ? "•" : " ").font(.caption)
                         }.frame(maxWidth: .infinity, minHeight: 48)
                             .background(value == .work ? SweepStyle.green.opacity(0.2) : value == .leave ? Color.red.opacity(0.1) : Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
                     }.buttonStyle(.plain)
@@ -137,13 +167,12 @@ struct PayrollView: View {
     private func summary(_ title: String, units value: Int) -> some View { VStack { Text(units(value)).font(.headline); Text(title).font(.caption).foregroundStyle(.secondary) } }
     private func units(_ n: Int) -> String { n % 2 == 0 ? String(n / 2) : String(format: "%.1f", Double(n) / 2) }
     private func move(_ step: Int) { month = PayrollDates.calendar.date(byAdding: .month, value: step, to: month)! }
-    private func hasAssignment(_ day: Date) -> Bool {
-        store.ledger.commissions(in: month, calendar: PayrollDates.calendar).contains { PayrollDates.calendar.isDate($0.1.signedAt, inSameDayAs: day) }
-    }
+    private var signedDays: Set<Date> { Set(store.ledger.commissions(in: month, calendar: PayrollDates.calendar).map { PayrollDates.calendar.startOfDay(for: $0.1.signedAt) }) }
+    private func hasAssignment(_ day: Date) -> Bool { signedDays.contains(PayrollDates.calendar.startOfDay(for: day)) }
     private func exportCSV() {
         func escape(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         var csv = "\u{FEFF}Khoản,Số tiền (VND)\n"
-        csv += result.rows.map { escape($0.0) + "," + String($0.1) }.joined(separator: "\n")
+        csv += result.rows.map { escape($0.0) + "," + (!period.policy.confirmed ? "Chưa cấu hình" : $0.0 == "Xăng xe" && !result.fuelConfirmed ? "Chờ chốt giá" : String($0.1)) }.joined(separator: "\n")
         csv += "\nTrạng thái," + (closed == nil ? "Tạm tính" : "Đã chốt") + "\nNgày,Công\n"
         csv += period.entries.sorted { $0.day < $1.day }.map { escape($0.day.formatted(date: .numeric, time: .omitted)) + "," + escape($0.state.rawValue) }.joined(separator: "\n")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Sweep-luong-\(period.id).csv")
@@ -219,7 +248,7 @@ private struct PayrollConfigurationView: View {
                 TextField("Loại xăng công ty dùng", text: $period.policy.fuelType)
                 TextField("Vùng giá", text: $period.policy.fuelRegion)
                 Text("Ngày giá áp dụng: " + PayrollDates.fuelDay(period.month).formatted(date: .numeric, time: .omitted))
-                MoneyInput(title: "Giá xăng / lít (để trống nếu chưa chốt)", text: $fuel)
+                MoneyInput(title: "Giá xăng / lít", text: $fuel)
                 TextField("Nguồn giá / ghi nhận công ty", text: $source)
                 Link("Đối chiếu Petrolimex", destination: URL(string: "https://www.petrolimex.com.vn/")!)
                 Text("Nhập đúng giá có hiệu lực ngày chốt, không lấy giá hôm nay thay tháng cũ. Tự động lấy giá chưa được bật.").font(.footnote).foregroundStyle(.secondary)

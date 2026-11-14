@@ -135,7 +135,12 @@ struct PayrollBook: Codable, Equatable {
     var snapshots: [PayrollSnapshot] = []
     var reopenedIDs: [UUID] = []
     var openingLeaveUnits: [String: Int] = [:]
-    func period(_ month: Date) -> PayrollMonth { months.first { $0.id == PayrollDates.key(month) } ?? PayrollMonth(month: DeliveryMonth.start(month)) }
+    func period(_ month: Date) -> PayrollMonth {
+        if let saved = months.first(where: { $0.id == PayrollDates.key(month) }) { return saved }
+        var next = PayrollMonth(month: DeliveryMonth.start(month))
+        if let previous = months.filter({ $0.month < next.month }).max(by: { $0.month < $1.month }) { next.policy = previous.policy }
+        return next
+    }
     func closed(_ month: Date) -> PayrollSnapshot? {
         snapshots.last { $0.period.id == PayrollDates.key(month) && !reopenedIDs.contains($0.id) }
     }
