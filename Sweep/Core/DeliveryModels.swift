@@ -296,7 +296,8 @@ struct DeliveryAudit: Codable, Identifiable, Equatable {
     var detail: String
 }
 struct DeliveryLedger: Codable, Equatable {
-    var schema = 2
+    var schema = 3
+    var payroll: PayrollBook? = nil
     var contacts: [DeliveryContact]? = nil
     var places: [DeliveryPlace]? = nil
     var orders: [DeliveryOrder] = []
@@ -444,7 +445,8 @@ struct DeliveryLedger: Codable, Equatable {
         return "\u{FEFF}" + ([header] + rows).map { $0.map(escape).joined(separator: ",") }.joined(separator: "\r\n")
     }
     func validate() throws {
-        guard (schema == 1 || schema == 2), orders.count <= 50_000, handovers.count <= 100_000, Set(orders.map(\.id)).count == orders.count else { throw DeliveryError.invalid("Sổ không đúng phiên bản hoặc trùng ID.") }
+        guard (1...3).contains(schema), orders.count <= 50_000, handovers.count <= 100_000, Set(orders.map(\.id)).count == orders.count else { throw DeliveryError.invalid("Sổ không đúng phiên bản hoặc trùng ID.") }
+        try payroll?.validate()
         guard (contacts?.count ?? 0) <= 10_000, (places?.count ?? 0) <= 50_000,
               Set((contacts ?? []).map(\.id)).count == (contacts?.count ?? 0),
               Set((places ?? []).map(\.id)).count == (places?.count ?? 0) else { throw DeliveryError.invalid("Danh bạ / vị trí trùng ID hoặc quá giới hạn.") }
@@ -498,6 +500,7 @@ struct DeliveryLedger: Codable, Equatable {
         }
     }
     func validateAppendOnly(from previous: DeliveryLedger) throws {
+        try (payroll ?? PayrollBook()).validateAppendOnly(from: previous.payroll ?? PayrollBook())
         func keeps<T: Equatable>(_ before: [T], _ after: [T]) -> Bool { after.starts(with: before) }
         guard keeps(previous.audit, audit), keeps(previous.handovers, handovers), keeps(previous.handoverReversals, handoverReversals) else { throw DeliveryError.invalid("Không được xóa hoặc sửa lịch sử tài chính.") }
         let indexed = Dictionary(uniqueKeysWithValues: orders.map { ($0.id, $0) })

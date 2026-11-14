@@ -4,6 +4,12 @@ import UniformTypeIdentifiers
 import QuickLook
 import ImageIO
 
+private enum EvidenceThumbnails {
+    static let cache: NSCache<NSURL, UIImage> = {
+        let value = NSCache<NSURL, UIImage>(); value.countLimit = 80; value.totalCostLimit = 24 * 1024 * 1024; return value
+    }()
+}
+
 struct EvidenceThumbnail: View {
     let url: URL
     var height: CGFloat = 160
@@ -16,8 +22,13 @@ struct EvidenceThumbnail: View {
         .frame(maxWidth: .infinity).frame(height: height)
         .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14))
         .task(id: url) {
+            let key = url.appendingPathExtension("thumb-\(Int(height))") as NSURL
+            if let cached = EvidenceThumbnails.cache.object(forKey: key) { image = cached; return }
             let pixels = max(160, min(1200, Int(height * 3)))
-            image = await Task.detached(priority: .utility) { Self.thumbnail(url, pixels: pixels) }.value
+            let result = await Task.detached(priority: .utility) { Self.thumbnail(url, pixels: pixels) }.value
+            guard !Task.isCancelled else { return }
+            if let result { EvidenceThumbnails.cache.setObject(result, forKey: key, cost: (result.cgImage?.bytesPerRow ?? 0) * (result.cgImage?.height ?? 0)) }
+            image = result
         }
     }
     nonisolated private static func thumbnail(_ url: URL, pixels: Int) -> UIImage? {
@@ -40,14 +51,10 @@ struct EvidencePicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.subheadline.bold())
-            if typeSize.isAccessibilitySize {
-                VStack(spacing: 10) { photoButton; cameraButton }
-            } else {
-                HStack(spacing: 12) { photoButton; cameraButton }
-            }
+            VStack(alignment: .leading, spacing: 8) { photoButton; cameraButton }
             if loading { ProgressView() }
         }
-        .buttonStyle(.bordered).controlSize(.large).disabled(store.busy || loading)
+        .buttonStyle(SweepCompactPill()).disabled(store.busy || loading)
         .onChange(of: selection) { _, item in
             guard let item else { return }
             Task {
@@ -84,12 +91,12 @@ struct EvidencePicker: View {
     }
     private var photoButton: some View {
         PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .compatible) {
-            Label("Chọn ảnh", systemImage: "photo.on.rectangle").lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity)
+            Label("Chọn ảnh", systemImage: "photo.on.rectangle")
         }.accessibilityIdentifier("evidence.photos")
     }
     private var cameraButton: some View {
         Button { camera = true } label: {
-            Label("Chụp ảnh", systemImage: "camera").lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity)
+            Label("Chụp ảnh", systemImage: "camera")
         }.disabled(!UIImagePickerController.isSourceTypeAvailable(.camera)).accessibilityIdentifier("evidence.camera")
     }
 }

@@ -1,6 +1,43 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    func testUpdate02CompactContactsAndPlaces() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--update02-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Công cụ"].waitForExistence(timeout: 20)); app.tabBars.buttons["Công cụ"].tap()
+        app.buttons["Liên hệ"].tap()
+        let call = app.buttons["contact.call"].firstMatch
+        XCTAssertTrue(call.waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(call.frame.width, 60); XCTAssertGreaterThanOrEqual(call.frame.width, 44)
+        XCTAssertGreaterThan(call.frame.midX, app.frame.width * 0.7)
+        XCTAssertTrue(app.staticTexts["0900000001"].exists)
+        attach(app, name: "update02-compact-contacts")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["Vị trí"].tap()
+        XCTAssertTrue(app.buttons["Google Maps"].waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(app.buttons["contact.call"].firstMatch.frame.width, 60)
+        attach(app, name: "update02-compact-places")
+    }
+    func testUpdate02AttendanceCalendarSavesAndPersists() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Công cụ"].waitForExistence(timeout: 20)); app.tabBars.buttons["Công cụ"].tap()
+        app.buttons["tool.payroll"].tap()
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+        let today = app.buttons["attendance.day.\(calendar.component(.day, from: Date()))"]
+        XCTAssertTrue(today.waitForExistence(timeout: 10)); today.tap()
+        XCTAssertTrue(app.buttons["attendance.save"].waitForExistence(timeout: 10)); app.buttons["attendance.save"].tap()
+        XCTAssertTrue(app.staticTexts["payroll.net"].waitForExistence(timeout: 10))
+        attach(app, name: "update02-attendance-and-salary")
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing"]
+        app.launch(); app.tabBars.buttons["Công cụ"].tap(); app.buttons["tool.payroll"].tap()
+        XCTAssertTrue(today.waitForExistence(timeout: 10)); XCTAssertTrue(today.label.contains("Đi làm"))
+    }
     func testReportImageSelectionAndCompactTransferCaption() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

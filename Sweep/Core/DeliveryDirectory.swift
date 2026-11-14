@@ -36,7 +36,8 @@ extension DeliveryLedger {
     mutating func saveContact(_ value: DeliveryContact) throws {
         guard !value.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nhập tên liên hệ.") }
         if !value.zalo.isEmpty {
-            guard let u = URL(string: value.zalo), u.scheme == "https", u.host != nil else { throw DeliveryError.invalid("Dán liên kết Zalo HTTPS của liên hệ.") }
+            let unchanged = (contacts ?? []).contains { $0.id == value.id && $0.zalo == value.zalo }
+            guard unchanged || ContactLinks.zalo(value.zalo) != nil else { throw DeliveryError.invalid("Chỉ nhận liên kết HTTPS thuộc zalo.me hoặc qr.zalo.me.") }
         }
         var list = contacts ?? []
         if let i = list.firstIndex(where: { $0.id == value.id }) { list[i] = value } else { list.append(value) }

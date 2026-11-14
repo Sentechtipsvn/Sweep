@@ -4,6 +4,7 @@ import QuickLook
 
 struct OrdersView: View {
     @EnvironmentObject private var store: DeliveryStore
+    @EnvironmentObject private var router: SweepRouter
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var inbox = SharedInboxStore()
     @State private var sharedInbox = false
@@ -89,7 +90,14 @@ struct OrdersView: View {
             .sheet(isPresented: $newOrder, onDismiss: openSavedOrder) { OrderIntakeView { id in savedOrder = id; newOrder = false } }
             .sheet(isPresented: $bill, onDismiss: openSavedOrder) { BillInboxView { id in savedOrder = id; bill = false } }
             .sheet(isPresented: $sharedInbox, onDismiss: openSavedOrder) { SharedInboxView(inbox: inbox) { id in savedOrder = id; sharedInbox = false } }
-            .task { await refreshInbox() }
+            .task {
+                await refreshInbox()
+                if let id = router.orderID, store.order(id) != nil { path = [id]; router.orderID = nil }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .sweepInboxReceived)) { _ in Task { await refreshInbox() } }
+            .onChange(of: router.orderID) { _, id in
+                if let id, store.order(id) != nil { path = [id]; router.orderID = nil }
+            }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refreshInbox() } } }
         }
     }

@@ -18,6 +18,7 @@ struct HomeView: View {
                 NavigationLink { PlacesView() } label: { ToolIcon(title: "Vị trí", asset: "tool-places") }
                 NavigationLink { ContactsView() } label: { ToolIcon(title: "Liên hệ", asset: "tool-contacts") }
                 NavigationLink { MaintenanceView() } label: { ToolIcon(title: "Dọn dẹp", asset: "tool-cleanup") }
+                NavigationLink { PayrollView() } label: { ToolIcon(title: "Chấm công", asset: "tool-payroll") }.accessibilityIdentifier("tool.payroll")
             }.buttonStyle(.plain).padding(20)
         }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle("Công cụ")
     }
@@ -44,6 +45,9 @@ struct SettingsView: View {
                 NavigationLink("Liên hệ bán hàng / tài xế") { ContactsView(editable: true) }
                 NavigationLink("Dọn dẹp / đặt lại dữ liệu") { MaintenanceView() }
                 NavigationLink("Công đơn và QR công ty") { DeliverySettingsView() }
+                NavigationLink("Chấm công và lương") { PayrollView() }
+                NavigationLink("Gia hạn Sweep") { RenewalView() }
+                NavigationLink("Nhận ảnh bằng Phím tắt") { SweepShortcutGuide() }
                 NavigationLink("Sao lưu và khôi phục sổ / ảnh") { DeliveryBackupView() }
                 Text("Sổ lưu trên thiết bị. Xóa app có thể xóa sổ; xuất bản sao ra Tệp trước khi đổi máy hoặc cài lại.").font(.footnote).foregroundStyle(.secondary)
             }

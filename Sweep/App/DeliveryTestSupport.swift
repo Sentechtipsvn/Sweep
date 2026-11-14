@@ -2,6 +2,14 @@
 import UIKit
 
 extension DeliveryStore {
+    func installUpdate02UITestFixture() {
+        guard ledger.contacts?.isEmpty != false else { return }
+        _ = change { ledger in
+            try ledger.saveContact(DeliveryContact(name: "Liên hệ thử 01", phone: "0900000001", zalo: "", aliases: "TEL", role: "Bán hàng"))
+            try ledger.saveContact(DeliveryContact(name: "Liên hệ thử 02", phone: "0900000002", zalo: "", aliases: "", role: "Tài xế"))
+            try ledger.savePlace(DeliveryPlace(customer: "Điểm giao thử", phone: "0900000003", address: "Địa chỉ thử nghiệm", kind: "Khách hàng"))
+        }
+    }
     func installUITestFixture() {
         guard ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing"), ledger.orders.isEmpty else { return }
         do {

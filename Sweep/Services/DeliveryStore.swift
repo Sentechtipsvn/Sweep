@@ -35,6 +35,13 @@ final class DeliveryStore: ObservableObject {
                 upgraded.record("Nâng sổ 0.5", "Giữ nguyên tiền và công; bản trước nâng cấp: " + recovery.lastPathComponent)
                 try database!.save(upgraded); ledger = upgraded
             }
+            if ledger.schema == 2 {
+                let recovery = base.appendingPathComponent("Before-upgrade-0.6-" + UUID().uuidString + ".sweepbackup")
+                try DeliveryBackup.write(ledger, evidence: evidenceDirectory, to: recovery, version: 2)
+                var upgraded = ledger; upgraded.schema = 3
+                upgraded.record("Nâng sổ 0.6", "Giữ công và tiền; bản trước nâng cấp: " + recovery.lastPathComponent)
+                try database!.save(upgraded); ledger = upgraded
+            }
             for name in ["Backups", "Exports"] {
                 try FileManager.default.createDirectory(at: documents.appendingPathComponent(name), withIntermediateDirectories: true)
             }
@@ -155,6 +162,7 @@ final class DeliveryStore: ObservableObject {
                 }
             }.value
             var next = prepared.ledger
+            next.schema = 3
             next.record("Khôi phục sổ", "Bản trước khi khôi phục: \(recovery.lastPathComponent)")
             try database!.save(next, replacing: true); ledger = next
             return true
