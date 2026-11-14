@@ -6,63 +6,31 @@ private enum AppRelease {
 }
 
 struct HomeView: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
+    private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 12), count: typeSize.isAccessibilitySize ? 2 : 4) }
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Công cụ ảnh và tệp").font(.title3.bold())
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 14) {
-                    NavigationLink { LibraryView(mode: .duplicates) } label: {
-                        ToolCard(title: "Ảnh trùng", subtitle: "Đối chiếu dữ liệu gốc", icon: "square.on.square", color: .green)
-                    }.accessibilityIdentifier("tool.duplicates")
-                    NavigationLink { LibraryView(mode: .screenshots) } label: {
-                        ToolCard(title: "Ảnh màn hình", subtitle: "Rà soát ảnh đã lưu", icon: "viewfinder", color: .teal)
-                    }
-                    NavigationLink { CompressionView() } label: {
-                        ToolCard(title: "Nén ảnh", subtitle: "Nhẹ hơn, dễ chia sẻ", icon: "arrow.down.right.and.arrow.up.left", color: .blue)
-                    }.accessibilityIdentifier("tool.compress")
-                    NavigationLink { FilesView() } label: {
-                        ToolCard(title: "File lớn", subtitle: "Xem thư mục được chọn", icon: "folder", color: .orange)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Label("Xử lý trên thiết bị", systemImage: "lock.shield")
-                    .font(.headline)
-                Text("Sweep không có máy chủ tải ảnh lên, không cần tài khoản hay VPN. Ảnh chỉ tải từ iCloud khi Sếp cho phép hoặc chọn nhập ảnh đó.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Text("BẢN THỬ NGHIỆM \(AppRelease.version) · © Sentechtipsvn")
-                    .font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-            }
-            .padding(20)
-            .frame(maxWidth: 700)
-            .frame(maxWidth: .infinity)
-        }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { Text("Sweep").font(.title2.bold()).accessibilityAddTraits(.isHeader) }
-            ToolbarItem(placement: .topBarTrailing) { Image(systemName: "sparkles").foregroundStyle(.green).accessibilityHidden(true) }
-        }
+            LazyVGrid(columns: columns, spacing: 24) {
+                NavigationLink { LibraryView(mode: .duplicates) } label: { ToolIcon(title: "Ảnh trùng", asset: "tool-duplicates") }.accessibilityIdentifier("tool.duplicates")
+                NavigationLink { LibraryView(mode: .screenshots) } label: { ToolIcon(title: "Ảnh màn hình", asset: "tool-screenshots") }
+                NavigationLink { CompressionView() } label: { ToolIcon(title: "Nén ảnh", asset: "tool-compress") }.accessibilityIdentifier("tool.compress")
+                NavigationLink { FilesView() } label: { ToolIcon(title: "Tệp lớn", asset: "tool-files") }
+                NavigationLink { PlacesView() } label: { ToolIcon(title: "Vị trí", asset: "tool-places") }
+                NavigationLink { ContactsView() } label: { ToolIcon(title: "Liên hệ", asset: "tool-contacts") }
+                NavigationLink { MaintenanceView() } label: { ToolIcon(title: "Dọn dẹp", asset: "tool-cleanup") }
+            }.buttonStyle(.plain).padding(20)
+        }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle("Công cụ")
     }
 }
-
-private struct ToolCard: View {
+private struct ToolIcon: View {
     let title: String
-    let subtitle: String
-    let icon: String
-    let color: Color
+    let asset: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            Image(systemName: icon).font(.title2).foregroundStyle(color)
-                .frame(width: 44, height: 44).background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-            Text(title).font(.headline).foregroundStyle(.primary)
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
-        .padding(17)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.primary.opacity(0.08), lineWidth: 1))
+        VStack(spacing: 8) {
+            Image(asset).resizable().scaledToFit().frame(maxWidth: 66).aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            Text(title).font(.caption).foregroundStyle(.primary).multilineTextAlignment(.center).lineLimit(2).frame(minHeight: 32, alignment: .top)
+        }.frame(maxWidth: .infinity).contentShape(Rectangle())
     }
 }
 
@@ -73,6 +41,8 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Trợ lý giao hàng") {
+                NavigationLink("Liên hệ bán hàng / tài xế") { ContactsView(editable: true) }
+                NavigationLink("Dọn dẹp / đặt lại dữ liệu") { MaintenanceView() }
                 NavigationLink("Công đơn và QR công ty") { DeliverySettingsView() }
                 NavigationLink("Sao lưu và khôi phục sổ / ảnh") { DeliveryBackupView() }
                 Text("Sổ lưu trên thiết bị. Xóa app có thể xóa sổ; xuất bản sao ra Tệp trước khi đổi máy hoặc cài lại.").font(.footnote).foregroundStyle(.secondary)

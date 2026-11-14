@@ -48,6 +48,24 @@ final class DeliveryDatabase {
         let ledger = try DeliveryCoding.decode(DeliveryLedger.self, from: Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0))))
         try ledger.validate(); return ledger
     }
+    func reset(using verified: DeliveryBackup.Prepared) throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            guard try load() == verified.ledger else { throw DeliveryError.invalid("Sổ đã đổi sau sao lưu. Chưa đặt lại dữ liệu.") }
+            let data = try DeliveryCoding.encode(DeliveryLedger())
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(connection, "INSERT INTO ledger(id,payload) VALUES(1,?)", -1, &statement, nil) == SQLITE_OK else { throw failure() }
+            defer { sqlite3_finalize(statement) }
+            try execute("DELETE FROM ledger")
+            let result = data.withUnsafeBytes { bytes in
+                sqlite3_bind_blob(statement, 1, bytes.baseAddress, Int32(data.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            }
+            guard result == SQLITE_OK, sqlite3_step(statement) == SQLITE_DONE else { throw failure() }
+            try execute("COMMIT")
+        } catch { try? execute("ROLLBACK"); throw error }
+        // Reclaim pages after the atomic reset; reclamation failure cannot undo a committed empty ledger.
+        try? execute("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;")
+    }
     func save(_ ledger: DeliveryLedger, replacing: Bool = false) throws {
         try ledger.validate()
         let data = try DeliveryCoding.encode(ledger)
@@ -83,16 +101,21 @@ enum EvidenceFiles {
     }
     static func imageExtension(_ url: URL) throws -> String {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              CGImageSourceGetCount(source) == 1, let type = CGImageSourceGetType(source) as String?,
-              [UTType.jpeg.identifier, UTType.png.identifier, UTType.heic.identifier, UTType.heif.identifier].contains(type),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let w = properties[kCGImagePropertyPixelWidth] as? Int, let h = properties[kCGImagePropertyPixelHeight] as? Int,
-              w > 0, h > 0, w <= 120_000_000 / h,
-              CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 64, kCGImageSourceShouldCacheImmediately: true] as CFDictionary) != nil else {
-            throw DeliveryError.invalid("Chọn ảnh tĩnh JPEG/PNG/HEIC đọc được, tối đa 120 megapixel.")
+              CGImageSourceGetCount(source) > 0, let identifier = CGImageSourceGetType(source) as String?, let type = UTType(identifier) else {
+            throw DeliveryError.invalid("Dữ liệu nguồn chưa phải ảnh giải mã được; có thể nguồn chia sẻ cung cấp một dạng khác với tệp gốc.")
         }
-        return UTType(type)?.preferredFilenameExtension ?? "jpg"
+        let formats: [(UTType, String)] = [(.jpeg, "jpg"), (.png, "png"), (.heic, "heic"), (.heif, "heif")]
+        guard let ext = formats.first(where: { type.conforms(to: $0.0) })?.1 else { throw DeliveryError.invalid("Dạng ảnh nhận được là \(identifier); cần chuẩn hóa trước khi lưu.") }
+        if type.conforms(to: .png), CGImageSourceGetCount(source) > 1 { throw DeliveryError.invalid("Ảnh PNG động chưa được nhận làm phiếu. Chọn ảnh tĩnh.") }
+        let index = CGImageSourceGetPrimaryImageIndex(source)
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let w = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int64Value,
+              let h = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int64Value, w > 0, h > 0 else { throw DeliveryError.invalid("Chưa đọc được kích thước ảnh nguồn.") }
+        guard w <= 120_000_000 / h else { throw DeliveryError.invalid("Ảnh nguồn vượt 120 megapixel.") }
+        guard CGImageSourceCreateThumbnailAtIndex(source, index, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 64,
+            kCGImageSourceShouldCacheImmediately: true] as CFDictionary) != nil else { throw DeliveryError.invalid("Không giải mã được ảnh \(identifier) kích thước \(w)×\(h).") }
+        return ext
     }
     static func importImage(_ source: URL, role: EvidenceRole, directory: URL) throws -> DeliveryEvidence {
         let accessed = source.startAccessingSecurityScopedResource()
@@ -124,7 +147,7 @@ enum EvidenceFiles {
 /// Streaming, versioned archive: magic, manifest length, manifest SHA256, manifest, original image bytes.
 /// No decoding of arbitrary paths, no ZIP expansion and no unbounded allocation for image payloads.
 enum DeliveryBackup {
-    struct Manifest: Codable { var version = 1; var createdAt = Date(); var ledger: DeliveryLedger }
+    struct Manifest: Codable { var version = 2; var createdAt = Date(); var ledger: DeliveryLedger }
     final class Prepared: @unchecked Sendable {
         let ledger: DeliveryLedger
         let staging: URL
@@ -132,9 +155,9 @@ enum DeliveryBackup {
         deinit { try? FileManager.default.removeItem(at: staging) }
     }
     static let magic = Data("SWEEP001".utf8)
-    static func write(_ ledger: DeliveryLedger, evidence: URL, to destination: URL) throws {
+    static func write(_ ledger: DeliveryLedger, evidence: URL, to destination: URL, version: Int = 2) throws {
         try ledger.validate()
-        let manifest = try DeliveryCoding.encode(Manifest(ledger: ledger))
+        let manifest = try DeliveryCoding.encode(Manifest(version: version, ledger: ledger))
         guard manifest.count <= 32 * 1024 * 1024 else { throw DeliveryError.invalid("Sổ quá lớn cho định dạng sao lưu này.") }
         FileManager.default.createFile(atPath: destination.path, contents: nil)
         let handle = try FileHandle(forWritingTo: destination)
@@ -179,7 +202,7 @@ enum DeliveryBackup {
             let expected = try read(32, from: handle), data = try read(Int(length), from: handle)
             guard Data(SHA256.hash(data: data)) == expected else { throw DeliveryError.invalid("Thông tin sổ bị sai hash.") }
             let manifest = try DeliveryCoding.decode(Manifest.self, from: data)
-            guard manifest.version == 1 else { throw DeliveryError.invalid("Bản sao lưu cần phiên bản Sweep mới hơn.") }
+            guard manifest.version == 1 || manifest.version == 2 else { throw DeliveryError.invalid("Bản sao lưu cần phiên bản Sweep mới hơn.") }
             try manifest.ledger.validate()
             for file in manifest.ledger.allEvidence {
                 let target = staging.appendingPathComponent(file.filename)

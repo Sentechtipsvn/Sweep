@@ -1,0 +1,101 @@
+name: Validate Sweep delivery workflows
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sweep-feature-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      - name: Test ledger compatibility, durable share queue and QR amounts
+        run: swift test
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build app and embedded Share Extension
+        run: |
+          set -o pipefail
+          xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build.log
+          test -d build/Build/Products/Release-iphoneos/Sweep.app/PlugIns/SweepShare.appex
+      - name: Package IPA with verifiable App Group metadata for AltStore
+        run: |
+          python3 Tools/package_ipa.py --app build/Build/Products/Release-iphoneos/Sweep.app \
+            --output dist/Sweep-0.5.0-AltStore.ipa
+      - name: Upload app for AltStore signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-0.5.0-AltStore
+          path: |
+            dist/Sweep-0.5.0-AltStore.ipa
+            dist/SHA256.txt
+            dist/SIGNING-METADATA.json
+          retention-days: 14
+      - name: Upload device build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-device-build-log
+          path: build.log
+          if-no-files-found: ignore
+  ui:
+    name: Simulator intake regression checks
+    needs: validate
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Check Bill import still works on simulator
+        run: |
+          set -o pipefail
+          SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,items in d["devices"].items() if "iOS-18-5" in runtime for x in items if x["name"] == "iPhone 16"))')
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build-simulator \
+            -resultBundlePath build-ui.xcresult CODE_SIGNING_ALLOWED=NO \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 \
+            -only-testing:SweepUITests/SweepUITests/testBillPreviewOCRImportAndRelaunch \
+            -only-testing:SweepUITests/SweepUITests/testRecordedTransferStillDisplaysQRCode \
+            -only-testing:SweepUITests/SweepUITests/testSharedImageReviewImportQRSetupAndRelaunch \
+            -only-testing:SweepUITests/SweepUITests/testReportImageSelectionAndCompactTransferCaption \
+            -only-testing:SweepUITests/SweepUITests/testReconciliationEmptyMonthHasNoFiguresFromAnotherMonth \
+            -only-testing:SweepUITests/SweepUITests/testIntakeHasOnlyPhotoAndCameraSourcesAtLargeTextSize \
+            -only-testing:SweepUITests/SweepUITests/testApprovedCashWorkflowAndNewTools test | tee simulator-test.log
+      - name: Export screenshots
+        if: always()
+        run: |
+          if [ -d build-ui.xcresult ]; then
+            xcrun xcresulttool export attachments --path build-ui.xcresult --output-path ui-screenshots || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Sweep-feature-validation-evidence
+          path: |
+            build.log
+            simulator-test.log
+            ui-screenshots/
+          if-no-files-found: ignore

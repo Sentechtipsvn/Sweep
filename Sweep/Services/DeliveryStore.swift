@@ -23,7 +23,42 @@ final class DeliveryStore: ObservableObject {
             try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
             database = try DeliveryDatabase(url: base.appendingPathComponent("Sweep.sqlite"))
             ledger = try database!.load()
+            if ledger.schema == 1 {
+                let previous = base
+                let recovery = previous.appendingPathComponent("Before-upgrade-0.5-" + UUID().uuidString + ".sweepbackup")
+                try DeliveryBackup.write(ledger, evidence: evidenceDirectory, to: recovery, version: 1)
+                var upgraded = ledger; upgraded.schema = 2
+                for i in upgraded.orders.indices where upgraded.orders[i].settlement != nil && upgraded.orders[i].settlement?.route == nil {
+                    let reminder = "Chọn lại nhánh giao phù hợp; các khoản tiền cũ được giữ nguyên."
+                    if !upgraded.orders[i].reviewNote.contains(reminder) { upgraded.orders[i].reviewNote += (upgraded.orders[i].reviewNote.isEmpty ? "" : "\n") + reminder }
+                }
+                upgraded.record("Nâng sổ 0.5", "Giữ nguyên tiền và công; bản trước nâng cấp: " + recovery.lastPathComponent)
+                try database!.save(upgraded); ledger = upgraded
+            }
+            for name in ["Backups", "Exports"] {
+                try FileManager.default.createDirectory(at: documents.appendingPathComponent(name), withIntermediateDirectories: true)
+            }
         } catch { blocked = true; message = "Sổ chưa mở được. Dữ liệu được giữ nguyên. " + error.localizedDescription }
+    }
+    nonisolated private static func importCompact(_ image: URL, role: EvidenceRole, directory: URL) throws -> DeliveryEvidence {
+        let compact = try InvoiceImageEncoder.compact(image)
+        defer { try? FileManager.default.removeItem(at: compact) }
+        return try EvidenceFiles.importImage(compact, role: role, directory: directory)
+    }
+    var documents: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
+    var shareCache: URL { FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("DeliveryShares", isDirectory: true) }
+    func outgoing(_ report: DeliveryReport, order: DeliveryOrder) async -> [URL]? {
+        guard !busy, !blocked else { return nil }; busy = true; defer { busy = false }
+        let files = report.evidenceIDs.compactMap { id in order.evidence.first { $0.id == id } }, dir = evidenceDirectory, cache = shareCache
+        do {
+            return try await Task.detached(priority: .userInitiated) {
+                try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+                return try files.map { file in
+                    try EvidenceFiles.verify(file, directory: dir)
+                    return try InvoiceImageEncoder.compact(dir.appendingPathComponent(file.filename), directory: cache)
+                }
+            }.value
+        } catch { message = error.localizedDescription; return nil }
     }
     func order(_ id: UUID) -> DeliveryOrder? { ledger.orders.first { $0.id == id } }
     func url(_ evidence: DeliveryEvidence) -> URL { evidenceDirectory.appendingPathComponent(evidence.filename) }
@@ -43,7 +78,7 @@ final class DeliveryStore: ObservableObject {
         do {
             if let image {
                 let directory = evidenceDirectory
-                file = try await Task.detached(priority: .userInitiated) { try EvidenceFiles.importImage(image, role: .invoice, directory: directory) }.value
+                file = try await Task.detached(priority: .userInitiated) { try Self.importCompact(image, role: .invoice, directory: directory) }.value
                 if !allowRepeatedImage, let file, let duplicate = ledger.orders.first(where: { $0.evidence.contains { $0.role == .invoice && $0.sha256 == file.sha256 } }) {
                     try? FileManager.default.removeItem(at: url(file))
                     message = "Ảnh này đã có trong phiếu \(duplicate.code). Mở hồ sơ cũ để kiểm tra; nếu là một phiếu khác hợp lệ, bật xác nhận dùng lại ảnh."
@@ -67,7 +102,7 @@ final class DeliveryStore: ObservableObject {
         var file: DeliveryEvidence?
         do {
             let directory = evidenceDirectory
-            let imported = try await Task.detached(priority: .userInitiated) { try EvidenceFiles.importImage(image, role: role, directory: directory) }.value
+            let imported = try await Task.detached(priority: .userInitiated) { try Self.importCompact(image, role: role, directory: directory) }.value
             file = imported
             var next = ledger
             if let id {
@@ -83,13 +118,15 @@ final class DeliveryStore: ObservableObject {
             if let file { try? FileManager.default.removeItem(at: url(file)) }; message = error.localizedDescription
         }
     }
-    func prepareReport(_ id: UUID, text: String) async -> DeliveryReport? {
+    func prepareReport(_ id: UUID, text: String, evidenceIDs: [UUID]? = nil) async -> DeliveryReport? {
         guard !busy, let order = order(id) else { return nil }
         busy = true; defer { busy = false }
         do {
+            var next = ledger
+            let report = try next.prepareReport(id, text: text, evidenceIDs: evidenceIDs)
+            let files = report.evidenceIDs.compactMap { wanted in order.activeEvidence.first { $0.id == wanted } }
             let directory = evidenceDirectory
-            try await Task.detached(priority: .userInitiated) { for file in order.activeEvidence { try EvidenceFiles.verify(file, directory: directory) } }.value
-            var next = ledger; let report = try next.prepareReport(id, text: text)
+            try await Task.detached(priority: .userInitiated) { for file in files { try EvidenceFiles.verify(file, directory: directory) } }.value
             try database!.save(next); ledger = next; return report
         } catch { message = error.localizedDescription; return nil }
     }
@@ -122,5 +159,72 @@ final class DeliveryStore: ObservableObject {
             try database!.save(next, replacing: true); ledger = next
             return true
         } catch { message = error.localizedDescription; return false }
+    }
+}
+
+extension DeliveryStore {
+    func maintain(backupFolder: URL, reset: Bool) async -> URL? {
+        guard !busy, !blocked, let database else { return nil }
+        busy = true; defer { busy = false }
+        let access = backupFolder.startAccessingSecurityScopedResource()
+        defer { if access { backupFolder.stopAccessingSecurityScopedResource() } }
+        do {
+            let folder = backupFolder.resolvingSymlinksInPath().standardizedFileURL.path
+            let protected = documents.resolvingSymlinksInPath().standardizedFileURL.path
+            guard folder != protected, !folder.hasPrefix(protected + "/"), !folder.hasPrefix(root.path) else { throw DeliveryError.invalid("Chọn iCloud Drive hoặc thư mục ngoài Sweep để giữ bản sao.") }
+            let snapshot = ledger, dir = evidenceDirectory
+            let pendingInbox = try? SharedInvoiceInbox.live()
+            let pendingScan = try (reset ? pendingInbox?.scan() : nil)
+            guard pendingScan?.warnings.isEmpty != false else { throw DeliveryError.invalid("Có ảnh chờ lỗi cần kiểm tra trước khi sao lưu và đặt lại.") }
+            let pending = pendingScan?.items ?? []
+            let destination = backupFolder.appendingPathComponent("Sweep-before-\(reset ? "reset" : "cleanup")-\(UUID().uuidString.prefix(8)).sweepbackup")
+            let verified = try await Task.detached(priority: .utility) {
+                let staging = FileManager.default.temporaryDirectory.appendingPathComponent("Backup-check-" + UUID().uuidString)
+                try DeliveryBackup.write(snapshot, evidence: dir, to: destination)
+                let checked = try DeliveryBackup.prepare(destination, staging: staging)
+                guard checked.ledger == snapshot else { throw DeliveryError.invalid("Bản sao chưa khớp sổ. Chưa xoá dữ liệu.") }
+                if !pending.isEmpty {
+                    let extra = destination.deletingPathExtension().appendingPathExtension("pending")
+                    try FileManager.default.createDirectory(at: extra, withIntermediateDirectories: true)
+                    for item in pending {
+                        try EvidenceFiles.verify(item.evidence, directory: item.directory)
+                        let target = extra.appendingPathComponent(item.id.uuidString)
+                        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+                        for source in [item.image, item.directory.appendingPathComponent("manifest.json")] {
+                            try FileManager.default.copyItem(at: source, to: target.appendingPathComponent(source.lastPathComponent))
+                        }
+                        try EvidenceFiles.verify(item.evidence, directory: target)
+                    }
+                    let scan = try SharedInvoiceInbox(directory: extra).scan()
+                    guard scan.items.count == pending.count, scan.warnings.isEmpty else { throw DeliveryError.invalid("Ảnh chờ chưa sao lưu đủ. Chưa xoá.") }
+                }
+                return checked
+            }.value
+            // Never delete the live store if anything changed while the backup was checked.
+            guard ledger == snapshot else { throw DeliveryError.invalid("Sổ đã đổi; tạo lại bản sao trước khi dọn.") }
+            if reset {
+                try database.reset(using: verified); ledger = DeliveryLedger()
+                for file in try FileManager.default.contentsOfDirectory(at: evidenceDirectory, includingPropertiesForKeys: nil) { try FileManager.default.removeItem(at: file) }
+                for name in ["Backups", "Exports"] {
+                    let path = documents.appendingPathComponent(name)
+                    for file in try FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: nil) { try FileManager.default.removeItem(at: file) }
+                }
+                for file in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) where file.pathExtension == "sweepbackup" { try FileManager.default.removeItem(at: file) }
+                if let inbox = pendingInbox {
+                    // Shares published after backup began remain available; do not race an active extension.
+                    for item in pending { try inbox.remove(item) }
+                }
+                for key in ["photoLimit", "allowCloudScan"] { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            let fm = FileManager.default
+            if fm.fileExists(atPath: shareCache.path) { try fm.removeItem(at: shareCache) }
+            // Specific owned caches only. Do not remove system caches or live files from another tool.
+            let cache = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            for name in ["VietQR", "SweepCompression"] {
+                let path = cache.appendingPathComponent(name)
+                if fm.fileExists(atPath: path.path) { try fm.removeItem(at: path) }
+            }
+            return destination
+        } catch { message = "Chưa hoàn tất: " + error.localizedDescription; return nil }
     }
 }

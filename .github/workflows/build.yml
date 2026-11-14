@@ -32,20 +32,18 @@ jobs:
           xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build.log
-      - name: Package unsigned IPA
+      - name: Package IPA for AltStore signing
         run: |
-          mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/Sweep.app dist/Payload/
-          cd dist
-          /usr/bin/zip -qr Sweep-0.2.1-unsigned.ipa Payload
-          shasum -a 256 Sweep-0.2.1-unsigned.ipa > SHA256.txt
+          python3 Tools/package_ipa.py --app build/Build/Products/Release-iphoneos/Sweep.app \
+            --output dist/Sweep-0.4.0-AltStore.ipa
       - name: Upload phone-test beta
         uses: actions/upload-artifact@v4
         with:
-          name: Sweep-0.2.1-beta-unsigned
+          name: Sweep-0.4.0-AltStore
           path: |
-            dist/Sweep-0.2.1-unsigned.ipa
+            dist/Sweep-0.4.0-AltStore.ipa
             dist/SHA256.txt
+            dist/SIGNING-METADATA.json
           retention-days: 14
       - name: Build and validate Bill shortcut
         run: |

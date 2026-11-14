@@ -4,6 +4,11 @@ import QuickLook
 
 struct OrdersView: View {
     @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var inbox = SharedInboxStore()
+    @State private var sharedInbox = false
+    @State private var refreshingInbox = false
+    @State private var inboxRefreshRequested = false
     @State private var path: [UUID] = []
     @State private var query = ""
     @State private var filter = "Tất cả"
@@ -16,23 +21,38 @@ struct OrdersView: View {
         store.ledger.orders.filter { order in
             let matches = query.isEmpty || (order.customer + " " + order.code + " " + order.phone).localizedStandardContains(query)
             let dateOK = allDates || Calendar.current.isDate(order.importedAt, inSameDayAs: day)
-            let statusOK = filter == "Tất cả" || (filter == "Đang giao" && order.outcome != .delivered && order.voidReason == nil) || (filter == "Cần báo cáo" && order.reportNeeded)
+            let statusOK = filter == "Tất cả" || (filter == "Đang giao" && order.outcome != .delivered && order.voidReason == nil) || (filter == "Đã giao" && order.outcome == .delivered && order.voidReason == nil)
             return matches && dateOK && statusOK
         }.sorted { $0.importedAt > $1.importedAt }
     }
     var body: some View {
         NavigationStack(path: $path) {
             List {
+                if !inbox.items.isEmpty {
+                    Section {
+                        Button { sharedInbox = true } label: { Label("\(inbox.items.count) ảnh được chia sẻ · nhận đơn", systemImage: "tray.and.arrow.down.fill") }.accessibilityIdentifier("orders.shared")
+                    }
+                }
                 Section {
-                    Picker("Bộ lọc", selection: $filter) { ForEach(["Tất cả", "Đang giao", "Cần báo cáo"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
-                    Toggle("Mọi ngày", isOn: $allDates)
-                    if !allDates { DatePicker("Ngày nhập vào Sweep", selection: $day, displayedComponents: .date) }
+                    HStack(spacing: 6) {
+                        ForEach(["Tất cả", "Đang giao", "Đã giao"], id: \.self) { value in
+                            Button { filter = value } label: {
+                                HStack(spacing: 4) {
+                                    Text(value).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                                    if value == "Đang giao", store.ledger.orders.contains(where: { $0.outcome != .delivered && $0.voidReason == nil }) { Circle().fill(SweepStyle.green).frame(width: 5, height: 5) }
+                                }
+                            }.buttonStyle(SweepPill(selected: filter == value)).accessibilityIdentifier("filter.\(value)")
+                        }
+                        Menu { Toggle("Mọi ngày", isOn: $allDates) } label: { Image(systemName: "ellipsis").rotationEffect(.degrees(90)).frame(width: 24, height: 44) }.accessibilityLabel("Tuỳ chọn ngày")
+                    }.listRowBackground(Color.clear)
+                    if !allDates { DatePicker("Ngày nhập", selection: $day, displayedComponents: .date) }
+
                 }
                 if store.blocked { Text("Sổ chưa mở được. Dữ liệu cũ được giữ nguyên; xem thông báo lỗi.").foregroundStyle(.red) }
                 else if visible.isEmpty {
                     VStack(spacing: 16) {
                         Label(query.isEmpty ? "Chưa có đơn đã lưu" : "Không tìm thấy đơn", systemImage: "shippingbox").font(.headline)
-                        Text("Chọn thư mục → mở hồ sơ → kiểm tra → Nhập đơn vào Sweep.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button("Chọn ảnh đơn hàng") { newOrder = true }.buttonStyle(.borderedProminent)
                         Button("Nhập đơn từ Bill") { bill = true }.buttonStyle(.borderedProminent)
                     }.frame(maxWidth: .infinity).padding(.vertical, 28)
                 }
@@ -42,13 +62,13 @@ struct OrdersView: View {
                             HStack { Text(order.customer).font(.headline); Spacer(); Text(VND.format(order.total)).font(.subheadline.bold()).monospacedDigit() }
                             Text(order.code).font(.caption).foregroundStyle(.secondary)
                             HStack {
-                                Text(order.voidReason != nil ? "Đã hủy" : order.outcome.rawValue)
+                                Text(order.workflowStatus)
                                 Spacer()
                                 if !order.activeAssignments.isEmpty { Label("Đã tính công", systemImage: "checkmark.seal.fill").foregroundStyle(.green) }
                                 else { Text("Chưa tính công").foregroundStyle(.secondary) }
                             }.font(.caption)
-                            if order.remaining > 0 { Text("Còn \(VND.format(order.remaining)) theo ghi nhận").font(.caption).foregroundStyle(.orange) }
-                            if order.bank > order.verifiedBank { Text("CK chờ đối soát: \(VND.format(order.bank - order.verifiedBank))").font(.caption).foregroundStyle(.secondary) }
+                            if order.remaining > 0 && !order.taskComplete { Text("Chưa thu \(VND.format(order.remaining))").font(.caption).foregroundStyle(.orange) }
+
                             if !order.reviewNote.isEmpty { Label("Cần rà soát dữ liệu cũ", systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) }
                         }.padding(.vertical, 6)
                     }.accessibilityIdentifier("order.\(order.code)")
@@ -57,13 +77,35 @@ struct OrdersView: View {
             .navigationTitle("Đơn hàng")
             .searchable(text: $query, prompt: "Tên khách, mã phiếu, số điện thoại")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button { bill = true } label: { Label("Nhập Bill", systemImage: "tray.and.arrow.down") }.accessibilityIdentifier("orders.bill").disabled(store.busy || store.blocked) }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button("Ảnh được chia sẻ", systemImage: "tray.and.arrow.down") { sharedInbox = true }
+                        Button("Nhập từ kho Bill", systemImage: "folder") { bill = true }.accessibilityIdentifier("orders.bill")
+                    } label: { Label("Nhận ảnh", systemImage: "tray.and.arrow.down") }.accessibilityIdentifier("orders.receive").disabled(store.busy || store.blocked)
+                }
                 ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) }
             }
             .navigationDestination(for: UUID.self) { OrderDetailView(id: $0) }
             .sheet(isPresented: $newOrder, onDismiss: openSavedOrder) { OrderIntakeView { id in savedOrder = id; newOrder = false } }
             .sheet(isPresented: $bill, onDismiss: openSavedOrder) { BillInboxView { id in savedOrder = id; bill = false } }
+            .sheet(isPresented: $sharedInbox, onDismiss: openSavedOrder) { SharedInboxView(inbox: inbox) { id in savedOrder = id; sharedInbox = false } }
+            .task { await refreshInbox() }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refreshInbox() } } }
         }
+    }
+    private func refreshInbox() async {
+        guard !refreshingInbox else { inboxRefreshRequested = true; return }
+        refreshingInbox = true; defer { refreshingInbox = false }
+        repeat {
+            inboxRefreshRequested = false
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--shared-ui-testing") {
+                do { try await store.installSharedUITestFixture() } catch { store.message = error.localizedDescription }
+            }
+            #endif
+            await inbox.reload()
+            if !inbox.items.isEmpty, !newOrder, !bill, !sharedInbox, !store.busy, !store.blocked { sharedInbox = true }
+        } while inboxRefreshRequested
     }
     private func openSavedOrder() {
         guard let id = savedOrder else { return }
@@ -74,6 +116,7 @@ struct OrdersView: View {
 
 struct OrderIntakeView: View {
     var candidate: BillCandidate? = nil
+    var shared: SharedInvoiceInbox.Item? = nil
     let saved: (UUID) -> Void
     @EnvironmentObject private var store: DeliveryStore
     @Environment(\.dismiss) private var dismiss
@@ -88,78 +131,85 @@ struct OrderIntakeView: View {
     @State private var readingRequest = UUID()
     @State private var readingStatus = ""
     @State private var validation = ""
+    @State private var duplicateID: UUID?
     @State private var hasInvoiceDate = false
     @State private var invoiceDate = Date()
+    @State private var askSigned = false
     @State private var signed = false
+    @State private var salesperson = ""
     @State private var signedAt = Date()
     @State private var allowRepeatedImage = false
     @State private var image: ImportedImage?
     @State private var preview: URL?
-    private var source: URL? { image?.url ?? candidate?.image }
+    private var source: URL? { image?.url ?? shared?.image ?? candidate?.image }
     var body: some View {
         NavigationStack {
             Form {
                 Section("Phiếu nội bộ có tiền") {
                     if let source { Button { preview = source } label: { EvidenceThumbnail(url: source, height: 220) }.buttonStyle(.plain) }
-                    EvidencePicker(title: "Chọn hoặc chụp phiếu") { url in
+                    EvidencePicker(title: "Ảnh phiếu") { url in
                         do { image = try await Task.detached { try ImportedImage.copy(from: url) }.value }
                         catch { store.message = error.localizedDescription }
                     }
-                    Text("Ảnh chưa được nhập vào sổ. Kiểm tra bên dưới rồi bấm Nhập đơn vào Sweep.").font(.caption).foregroundStyle(.secondary)
                     if reading { ProgressView("Đang đọc thông tin trên phiếu…") }
                     if !readingStatus.isEmpty { Text(readingStatus).font(.caption).foregroundStyle(.secondary) }
                     if let source { Button("Đọc lại thông tin còn thiếu từ ảnh") { Task { await readInvoice(source) } }.disabled(reading) }
                 }
                 Section("Hồ sơ") {
-                    TextField("Mã cạnh “Số:” trên phiếu (bắt buộc)", text: $code).textInputAutocapitalization(.characters).accessibilityIdentifier("intake.code")
-                    TextField("Tên tiệm tại “Đơn vị:”", text: $customer).accessibilityIdentifier("intake.customer")
+                    TextField("Mã phiếu", text: $code).textInputAutocapitalization(.characters).accessibilityIdentifier("intake.code")
+                    TextField("Tên khách hàng", text: $customer).accessibilityIdentifier("intake.customer")
                     MoneyInput(title: "Tổng đơn", text: $total, identifier: "intake.total")
-                    TextField("Điện thoại trên phiếu (tùy chọn)", text: $phone).keyboardType(.phonePad)
-                    if !phone.isEmpty { Text("Số in cạnh NV bán hàng có thể là nhân viên bán hàng. Xác minh trước khi gọi khách.").font(.caption).foregroundStyle(.orange) }
-                    TextField("Địa chỉ (tùy chọn)", text: $address)
+                    TextField("Số điện thoại khách", text: $phone).keyboardType(.phonePad)
+                    TextField("Địa chỉ giao hàng", text: $address)
                     TextField("Ghi chú giao hàng / giờ hẹn", text: $deliveryNote)
-                    Text("Mã phiếu, tên tiệm và tổng tiền là bắt buộc. OCR là gợi ý; đối chiếu ảnh trước khi nhập.").font(.caption).foregroundStyle(.secondary)
                     Toggle("Có ngày trên hóa đơn", isOn: $hasInvoiceDate)
                     if hasInvoiceDate { DatePicker("Ngày hóa đơn", selection: $invoiceDate, displayedComponents: .date) }
                 }
-                Section("Công đi giao") {
-                    Toggle("Đã ký nhận phiếu để đi giao", isOn: $signed).accessibilityIdentifier("intake.signed")
+                Section("Ký nhận") {
+                    Label("Đã ký nhận phiếu", systemImage: "checkmark.seal.fill").foregroundStyle(SweepStyle.green).accessibilityIdentifier("intake.signed")
                     if signed { DatePicker("Ngày ký nhận", selection: $signedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute]) }
-                    Text("Xác nhận chữ ký của Sếp khi nhận việc, khác chữ ký khách nhận hàng. Mức hiện tại \(VND.format(store.ledger.settings.fee))/phiếu. Chưa ký thì lưu nháp, chưa tính công.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    LabeledContent("Công mỗi phiếu", value: VND.format(store.ledger.settings.fee))
                     Toggle("Đây là phiếu khác hợp lệ dù dùng lại ảnh", isOn: $allowRepeatedImage).font(.caption)
                 }
                 if let candidate {
                     Section("Xem trước dữ liệu Bill") {
-                        Text("Gói \(candidate.id.dropFirst(5).prefix(12)) · \(candidate.isLegacy ? "sổ cũ" : "sen-bill-v1")")
                         if let date = candidate.createdAt { LabeledContent("Ngày lưu bên Bill", value: date.formatted(date: .numeric, time: .shortened)) }
                         LabeledContent("Tiền mặt giữ lại", value: VND.format(candidate.cash))
                         LabeledContent("CK khách báo giữ lại", value: VND.format(candidate.bank))
                         Text(candidate.note.isEmpty ? "Gói nhập không xác nhận ngày ký. Sếp kiểm tra trước khi tính công." : candidate.note).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if !validation.isEmpty { Section { Text(validation).foregroundStyle(.red) } }
+                if !validation.isEmpty {
+                    Section {
+                        Text(validation).foregroundStyle(.red)
+                        if let duplicateID { Button("Đây là đơn đã có: bỏ ảnh chờ và mở hồ sơ") { saved(duplicateID) } }
+                    }
+                }
             }
             .navigationTitle("Nhận đơn").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .quickLookPreview($preview)
             .onAppear {
                 guard !initialized else { return }; initialized = true
+                if let at = shared?.signedAt { signed = true; signedAt = at } else { askSigned = true }
                 if let candidate {
                     customer = candidate.customer; total = String(candidate.total); code = candidate.code
                     phone = candidate.phone; address = candidate.address; deliveryNote = candidate.deliveryNote
                     if let date = candidate.invoiceDate { invoiceDate = date; hasInvoiceDate = true }
                 }
             }
+            .alert("Đơn này bạn đã ký chưa?", isPresented: $askSigned) {
+                Button("Đã ký") { signed = true }
+                Button("Bỏ qua", role: .cancel) { dismiss() }
+            }
             .task(id: source) { if let source { await readInvoice(source) } }
             .scrollDismissesKeyboard(.interactively)
             .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Xong") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }.accessibilityIdentifier("keyboard.done") } }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 6) {
-                    if !validation.isEmpty { Text(validation).font(.caption).foregroundStyle(.red) }
                     Button(signed ? "Nhập đơn và ghi công ký nhận" : "Nhập đơn vào Sweep") { Task { await save() } }
                         .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).controlSize(.large)
-                        .accessibilityIdentifier("intake.save").disabled(store.busy || reading)
+                        .accessibilityIdentifier("intake.save").disabled(store.busy || reading || !signed || source == nil)
                 }.padding().frame(maxWidth: .infinity).background(.bar)
             }
             .disabled(store.busy)
@@ -169,8 +219,10 @@ struct OrderIntakeView: View {
         let request = UUID(); readingRequest = request; reading = true
         defer { if readingRequest == request { reading = false } }
         do {
+            if let shared, image == nil { try await Task.detached { try EvidenceFiles.verify(shared.evidence, directory: shared.directory) }.value }
             let fields = try await Task.detached(priority: .userInitiated) { try InvoiceOCR.read(url) }.value
             guard !Task.isCancelled, source == url, readingRequest == request else { return }
+            if salesperson.isEmpty { salesperson = fields.salesperson }
             if code.isEmpty { code = fields.code }
             if customer.isEmpty { customer = fields.customer }
             if total.isEmpty || (candidate == nil && total == "0") { if let value = fields.total { total = String(value) } }
@@ -182,20 +234,29 @@ struct OrderIntakeView: View {
             if code.isEmpty { missing.append("mã cạnh Số:") }
             if customer.isEmpty { missing.append("tên tại Đơn vị:") }
             if total.isEmpty { missing.append("tổng tiền") }
-            readingStatus = missing.isEmpty ? "Đã điền gợi ý. Kiểm tra với ảnh, rồi bấm Nhập đơn vào Sweep." : "Chưa đọc rõ " + missing.joined(separator: ", ") + ". Sếp điền tay phần còn thiếu."
-            if let value = fields.total, let current = try? VND.parse(total), current != value { readingStatus += " Tổng OCR khác dữ liệu Bill; em giữ tiền Bill để Sếp đối chiếu." }
+            readingStatus = missing.isEmpty ? "" : "Chưa đọc rõ " + missing.joined(separator: ", ") + "."
+            if let value = fields.total, let current = try? VND.parse(total), current != value { readingStatus += " Tổng OCR khác số tiền đang điền; em giữ số tiền hiện tại để Sếp đối chiếu." }
         } catch { readingStatus = "Chưa đọc được ảnh: " + error.localizedDescription + " Sếp có thể điền tay." }
     }
     private func save() async {
-        validation = ""
+        validation = ""; duplicateID = nil
+        guard signed, source != nil else { validation = "Chọn ảnh và xác nhận đã ký nhận."; return }
         guard !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !customer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             validation = "Điền mã cạnh Số: và tên tại Đơn vị: trước khi nhập."; return
         }
         do {
             var order = DeliveryOrder(code: code.trimmingCharacters(in: .whitespacesAndNewlines), customer: customer.trimmingCharacters(in: .whitespacesAndNewlines), total: try VND.parse(total))
-            order.phone = phone; order.address = address; order.invoiceAt = hasInvoiceDate ? invoiceDate : nil
-            order.note = [deliveryNote.isEmpty ? "" : "Giao hàng: \(deliveryNote)", phone.isEmpty ? "" : "Điện thoại trên phiếu cần xác minh người nhận: \(phone)"].filter { !$0.isEmpty }.joined(separator: "\n")
+            if let shared {
+                if let old = store.ledger.orders.first(where: { $0.sourceID == shared.sourceID }) { saved(old.id); return }
+                if let old = store.ledger.orders.first(where: { DeliveryOrder.normalizedCode($0.code) == DeliveryOrder.normalizedCode(order.code) }) {
+                    duplicateID = old.id; validation = "Mã \(old.code) đã có: \(old.customer), \(VND.format(old.total)). Ảnh chờ vẫn được giữ. Kiểm tra lại mã hoặc xác nhận đây là đơn cũ."; return
+                }
+                try await Task.detached { try EvidenceFiles.verify(shared.evidence, directory: shared.directory) }.value
+                order.sourceID = shared.sourceID; order.sourceCreatedAt = shared.receivedAt
+            }
+            order.salesperson = salesperson; order.phone = phone; order.address = address; order.invoiceAt = hasInvoiceDate ? invoiceDate : nil
+            order.note = InvoiceParser.cleanStoredNote(deliveryNote)
             if let candidate {
                 guard order.total >= candidate.cash + candidate.bank else { throw DeliveryError.invalid("Tổng sửa thấp hơn khoản thu cũ. Kiểm tra sổ trước khi nhập.") }
                 order.sourceID = candidate.id; order.sourceCreatedAt = candidate.createdAt; order.sourceSnapshot = candidate.sourceSnapshot
