@@ -59,7 +59,7 @@ struct PayrollView: View {
                 HStack {
                     Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.buttonStyle(.borderless)
                     Spacer()
-                    Text("Tháng \(PayrollDates.calendar.component(.month, from: month)) / \(year)").font(.headline)
+                    Text(verbatim: "Tháng \(PayrollDates.calendar.component(.month, from: month)) / \(year)").font(.headline)
                     Spacer()
                     Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.buttonStyle(.borderless)
                 }
@@ -84,7 +84,7 @@ struct PayrollView: View {
     }
 
     private var annualLeaveSection: some View {
-            Section("Phép năm \(year)") {
+            Section("Phép năm " + String(year)) {
                 LabeledContent("Đã nghỉ / hạn mức", value: "\(units(book.annualLeaveUnits(year: year))) / 12 ngày")
                 let remaining = 24 - book.annualLeaveUnits(year: year)
                 Text(remaining < 0 ? "Vượt \(units(-remaining)) ngày. Vẫn giữ toàn bộ ngày nghỉ để đối chiếu." : "Còn \(units(remaining)) ngày phép không lương.")
