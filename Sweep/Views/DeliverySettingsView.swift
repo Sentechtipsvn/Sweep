@@ -85,7 +85,7 @@ struct DeliveryBackupView: View {
                 Section("Bản giữ trước các lần khôi phục") {
                     ForEach(recoveries, id: \.self) { url in
                         Button { sharing = DeliveryShare(items: [url]) } label: {
-                            Label("Xuất bản trước khôi phục · \(url.lastPathComponent.dropFirst(15).prefix(8))", systemImage: "clock.arrow.circlepath")
+                            Label("Xuất bản lưu trước thay đổi · \(url.lastPathComponent.dropFirst(15).prefix(8))", systemImage: "clock.arrow.circlepath")
                         }
                     }
                 }
@@ -112,7 +112,7 @@ struct DeliveryBackupView: View {
             Button("Giữ sổ đang dùng", role: .cancel) {}
         } message: { Text("Sổ \(store.ledger.orders.count) hồ sơ hiện tại sẽ được thay bằng \(prepared?.ledger.orders.count ?? 0) hồ sơ của bản sao. Xuất bản hiện tại ra Tệp trước nếu Sếp cần giữ riêng.") }
         .onAppear {
-            recoveries = ((try? FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent.hasPrefix("Before-restore-") && $0.pathExtension == "sweepbackup" }
+            recoveries = ((try? FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent.hasPrefix("Before-") && $0.pathExtension == "sweepbackup" }
         }
     }
 }

@@ -23,6 +23,18 @@ final class DeliveryStore: ObservableObject {
             try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
             database = try DeliveryDatabase(url: base.appendingPathComponent("Sweep.sqlite"))
             ledger = try database!.load()
+            if ledger.schema == 1 {
+                let previous = base
+                let recovery = previous.appendingPathComponent("Before-upgrade-0.5-" + UUID().uuidString + ".sweepbackup")
+                try DeliveryBackup.write(ledger, evidence: evidenceDirectory, to: recovery, version: 1)
+                var upgraded = ledger; upgraded.schema = 2
+                for i in upgraded.orders.indices where upgraded.orders[i].settlement != nil && upgraded.orders[i].settlement?.route == nil {
+                    let reminder = "Chọn lại nhánh giao phù hợp; các khoản tiền cũ được giữ nguyên."
+                    if !upgraded.orders[i].reviewNote.contains(reminder) { upgraded.orders[i].reviewNote += (upgraded.orders[i].reviewNote.isEmpty ? "" : "\n") + reminder }
+                }
+                upgraded.record("Nâng sổ 0.5", "Giữ nguyên tiền và công; bản trước nâng cấp: " + recovery.lastPathComponent)
+                try database!.save(upgraded); ledger = upgraded
+            }
             for name in ["Backups", "Exports"] {
                 try FileManager.default.createDirectory(at: documents.appendingPathComponent(name), withIntermediateDirectories: true)
             }
@@ -162,14 +174,15 @@ extension DeliveryStore {
             guard folder != protected, !folder.hasPrefix(protected + "/"), !folder.hasPrefix(root.path) else { throw DeliveryError.invalid("Chọn iCloud Drive hoặc thư mục ngoài Sweep để giữ bản sao.") }
             let snapshot = ledger, dir = evidenceDirectory
             let pendingInbox = try? SharedInvoiceInbox.live()
-            let pending = reset ? (try pendingInbox?.scan().items ?? []) : []
+            let pendingScan = try (reset ? pendingInbox?.scan() : nil)
+            guard pendingScan?.warnings.isEmpty != false else { throw DeliveryError.invalid("Có ảnh chờ lỗi cần kiểm tra trước khi sao lưu và đặt lại.") }
+            let pending = pendingScan?.items ?? []
             let destination = backupFolder.appendingPathComponent("Sweep-before-\(reset ? "reset" : "cleanup")-\(UUID().uuidString.prefix(8)).sweepbackup")
-            try await Task.detached(priority: .utility) {
+            let verified = try await Task.detached(priority: .utility) {
                 let staging = FileManager.default.temporaryDirectory.appendingPathComponent("Backup-check-" + UUID().uuidString)
                 try DeliveryBackup.write(snapshot, evidence: dir, to: destination)
                 let checked = try DeliveryBackup.prepare(destination, staging: staging)
                 guard checked.ledger == snapshot else { throw DeliveryError.invalid("Bản sao chưa khớp sổ. Chưa xoá dữ liệu.") }
-                withExtendedLifetime(checked) {}
                 if !pending.isEmpty {
                     let extra = destination.deletingPathExtension().appendingPathExtension("pending")
                     try FileManager.default.createDirectory(at: extra, withIntermediateDirectories: true)
@@ -185,13 +198,12 @@ extension DeliveryStore {
                     let scan = try SharedInvoiceInbox(directory: extra).scan()
                     guard scan.items.count == pending.count, scan.warnings.isEmpty else { throw DeliveryError.invalid("Ảnh chờ chưa sao lưu đủ. Chưa xoá.") }
                 }
+                return checked
             }.value
             // Never delete the live store if anything changed while the backup was checked.
             guard ledger == snapshot else { throw DeliveryError.invalid("Sổ đã đổi; tạo lại bản sao trước khi dọn.") }
             if reset {
-                let empty = DeliveryLedger()
-                try database.save(empty, replacing: true); ledger = empty
-                try database.purgePreviousSnapshot()
+                try database.reset(using: verified); ledger = DeliveryLedger()
                 for file in try FileManager.default.contentsOfDirectory(at: evidenceDirectory, includingPropertiesForKeys: nil) { try FileManager.default.removeItem(at: file) }
                 for name in ["Backups", "Exports"] {
                     let path = documents.appendingPathComponent(name)

@@ -47,7 +47,7 @@ final class ApprovedWorkflowTests: XCTestCase {
         XCTAssertFalse(ledger.orders[0].reportSent)
     }
     func testNewFieldsDecodeOldBackupAndDirectoryRoundTrips() throws {
-        var ledger = DeliveryLedger(); _ = try ledger.insert(order())
+        var ledger = DeliveryLedger(); ledger.schema = 1; _ = try ledger.insert(order())
         let data = try DeliveryCoding.encode(ledger)
         let decoded = try DeliveryCoding.decode(DeliveryLedger.self, from: data)
         XCTAssertNil(decoded.places); XCTAssertNil(decoded.contacts); XCTAssertNil(decoded.orders[0].settlement?.route)

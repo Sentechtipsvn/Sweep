@@ -69,7 +69,7 @@ struct ReconciliationView: View {
                     NavigationLink { OrderDetailView(id: order.id) } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack { Text(order.customer); Spacer(); Text(VND.format(assignment.fee)) }
-                            Text("\(order.code) · \(assignment.signedAt.formatted(date: .numeric, time: .omitted)) · \(order.outcome.rawValue)").font(.caption).foregroundStyle(.secondary)
+                            Text("\(order.code) · \(assignment.signedAt.formatted(date: .numeric, time: .omitted)) · \(order.workflowStatus)").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

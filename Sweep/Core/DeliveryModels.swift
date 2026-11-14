@@ -226,7 +226,8 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
         if settlement?.route == .freight { return "\(customer) · Đã giao chành · \(code)" }
         if bank > 0 {
             let mixed = cash > 0 ? " · Tiền mặt \(VND.format(cash))" : ""
-            return "\(customer) đã chuyển khoản \(VND.format(bank))" + mixed
+            let deferred = remaining > 0 ? " · Còn chuyển sau \(VND.format(remaining))" : ""
+            return "\(customer) đã chuyển khoản \(VND.format(bank))" + mixed + deferred
         }
         if settlement?.route == .transferLater {
             let mixed = cash > 0 ? " · Đã thu tiền mặt \(VND.format(cash))" : ""
@@ -275,7 +276,7 @@ struct DeliveryAudit: Codable, Identifiable, Equatable {
     var detail: String
 }
 struct DeliveryLedger: Codable, Equatable {
-    var schema = 1
+    var schema = 2
     var contacts: [DeliveryContact]? = nil
     var places: [DeliveryPlace]? = nil
     var orders: [DeliveryOrder] = []
@@ -416,7 +417,19 @@ struct DeliveryLedger: Codable, Equatable {
         return "\u{FEFF}" + ([header] + rows).map { $0.map(escape).joined(separator: ",") }.joined(separator: "\r\n")
     }
     func validate() throws {
-        guard schema == 1, orders.count <= 50_000, handovers.count <= 100_000, Set(orders.map(\.id)).count == orders.count else { throw DeliveryError.invalid("Sổ không đúng phiên bản hoặc trùng ID.") }
+        guard (schema == 1 || schema == 2), orders.count <= 50_000, handovers.count <= 100_000, Set(orders.map(\.id)).count == orders.count else { throw DeliveryError.invalid("Sổ không đúng phiên bản hoặc trùng ID.") }
+        guard (contacts?.count ?? 0) <= 10_000, (places?.count ?? 0) <= 50_000,
+              Set((contacts ?? []).map(\.id)).count == (contacts?.count ?? 0),
+              Set((places ?? []).map(\.id)).count == (places?.count ?? 0) else { throw DeliveryError.invalid("Danh bạ / vị trí trùng ID hoặc quá giới hạn.") }
+        for place in places ?? [] {
+            guard !place.customer.isEmpty, !place.address.isEmpty,
+                  (place.latitude == nil) == (place.longitude == nil) else { throw DeliveryError.invalid("Vị trí thiếu dữ liệu.") }
+            if let lat = place.latitude, let lon = place.longitude { guard lat.isFinite && lon.isFinite && (-90...90).contains(lat) && (-180...180).contains(lon) else { throw DeliveryError.invalid("Tọa độ không hợp lệ.") } }
+        }
+        for contact in contacts ?? [] {
+            guard !contact.name.isEmpty else { throw DeliveryError.invalid("Liên hệ thiếu tên.") }
+            if !contact.zalo.isEmpty { guard let url = URL(string: contact.zalo), url.scheme == "https", url.host != nil else { throw DeliveryError.invalid("Link Zalo không hợp lệ.") } }
+        }
         try VND.check(settings.fee)
         try settings.vietQR?.validate()
         guard Set(orders.map { DeliveryOrder.normalizedCode($0.code) }).count == orders.count else { throw DeliveryError.invalid("Sổ có mã phiếu trùng.") }

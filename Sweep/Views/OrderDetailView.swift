@@ -131,11 +131,9 @@ struct OrderDetailView: View {
                         }
                     }
                 }
-                .sheet(item: $method) { DeliveryFlowView(id: id, method: $0) }
+                .sheet(item: $method, onDismiss: promptForLocation) { DeliveryFlowView(id: id, method: $0) }
                 .sheet(isPresented: $saveLocation) { NavigationStack { PlaceEditor(order: order) } }
-                .onChange(of: order.taskComplete) { _, done in
-                    if done && order.locationPromptedAt == nil && !store.ledger.hasPlace(for: order) && !order.address.isEmpty { locationPrompt = true }
-                }
+                .onAppear { promptForLocation() }
                 .alert("Lưu vị trí giao hàng?", isPresented: $locationPrompt) {
                     Button("Lưu vị trí") { markLocationPrompt(); saveLocation = true }
                     Button("Để sau", role: .cancel) { markLocationPrompt() }
@@ -160,6 +158,10 @@ struct OrderDetailView: View {
         .toolbar { if order?.voidReason == nil { Button("Sửa") { edit = true } } }
         .quickLookPreview($preview)
         .disabled(store.busy)
+    }
+    private func promptForLocation() {
+        guard let order, order.taskComplete, order.locationPromptedAt == nil, !store.ledger.hasPlace(for: order) else { return }
+        locationPrompt = true
     }
     private func markLocationPrompt() {
         _ = store.change { ledger in
@@ -384,10 +386,15 @@ struct OrderReportView: View {
             do { try await Task.sleep(for: .milliseconds(600)); try Task.checkCancellation() } catch { return }
             if !store.busy { _ = store.change { try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) } }
         }
+        .onDisappear {
+            if initialized, !store.busy, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                _ = store.change { try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }
+            }
+        }
         .onChange(of: text) { _, _ in copied = false; draftSaved = false }
         .onChange(of: store.order(id)?.shareText()) { _, caption in if let caption { text = caption; prepared = nil } }
-        .onChange(of: store.order(id)?.orderedEvidence.map(\.id)) { _, ids in
-            let valid = Set(ids ?? []); selectedIDs.removeAll { !valid.contains($0) }; if let order = store.order(id) { for added in order.defaultShareEvidenceIDs where !selectedIDs.contains(added) { selectedIDs.append(added) } }; prepared = nil
+        .onChange(of: store.order(id)?.orderedEvidence.map(\.id)) { previous, ids in
+            let valid = Set(ids ?? []), old = Set(previous ?? []); selectedIDs.removeAll { !valid.contains($0) }; if let order = store.order(id) { for added in order.defaultShareEvidenceIDs where !old.contains(added) && !selectedIDs.contains(added) { selectedIDs.append(added) } }; prepared = nil
         }
         .sheet(isPresented: $choosingImages) {
             NavigationStack {

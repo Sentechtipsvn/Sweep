@@ -89,15 +89,16 @@ final class DeliveryGPS: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var coordinate: CLLocationCoordinate2D?
     @Published var problem = ""
     private let manager = CLLocationManager()
+    private var requested = false
     override init() { super.init(); manager.delegate = self; manager.desiredAccuracy = kCLLocationAccuracyBest }
     func request() {
-        problem = ""
+        problem = ""; requested = true
         if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
         else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted { problem = "Cho phép vị trí trong Cài đặt hoặc chọn trên bản đồ." }
         else { manager.requestLocation() }
     }
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways { manager.requestLocation() }
+        if requested && (manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways) { manager.requestLocation() }
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) { coordinate = locations.last?.coordinate }
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { problem = error.localizedDescription }

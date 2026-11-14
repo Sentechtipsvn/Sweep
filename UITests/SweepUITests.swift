@@ -243,6 +243,7 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(app.buttons["flow.cashFull"].waitForExistence(timeout: 10)); app.buttons["flow.cashFull"].tap()
         app.alerts.buttons["Đã nhận đủ"].tap()
         XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 10))
+        if app.alerts["Lưu vị trí giao hàng?"].waitForExistence(timeout: 3) { app.alerts.buttons["Để sau"].tap() }
         attach(app, name: "approved-cash-full-no-report")
         app.tabBars.buttons["Lịch sử"].tap(); assertRow("audit.cashHeld", contains: "2.165.000₫", in: app)
         app.tabBars.buttons["Công cụ"].tap()
