@@ -117,6 +117,7 @@ struct DeliveryReport: Codable, Identifiable, Equatable {
 }
 struct DeliveryReportDraft: Codable, Identifiable, Equatable {
     var id = UUID()
+    var evidenceIDs: [UUID]? = nil
     var revision: Int
     var text: String
     var at = Date()
@@ -172,6 +173,8 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     }
     var reportSent: Bool {
         guard let report = reports.last else { return false }
+        if let draft = reportDrafts.last, draft.at > report.preparedAt,
+           draft.text != report.text || (draft.evidenceIDs != nil && draft.evidenceIDs != report.evidenceIDs) { return false }
         let current = report.contentKey.map { $0 == reportContentKey } ?? (report.revision == revision)
         return current && Set(report.evidenceIDs).isSubset(of: Set(activeEvidence.map(\.id))) && reportAcks.contains { $0.reportID == report.id }
     }
@@ -353,12 +356,12 @@ struct DeliveryLedger: Codable, Equatable {
         orders[i].reports.append(report); record("Chuẩn bị báo cáo", orderID: id, report.id.uuidString)
         return report
     }
-    mutating func saveReportDraft(_ id: UUID, text: String) throws {
+    mutating func saveReportDraft(_ id: UUID, text: String, evidenceIDs: [UUID]? = nil) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].voidReason == nil,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nội dung nháp đang trống hoặc hồ sơ không hợp lệ.") }
-        if let draft = orders[i].reportDrafts.last, draft.text == text, draft.revision == orders[i].revision { return }
+        if let draft = orders[i].reportDrafts.last, draft.text == text, draft.evidenceIDs == evidenceIDs, draft.revision == orders[i].revision { return }
         if let report = orders[i].reports.last, report.text != text, report.revision == orders[i].revision { orders[i].revision += 1 }
-        orders[i].reportDrafts.append(DeliveryReportDraft(revision: orders[i].revision, text: text))
+        orders[i].reportDrafts.append(DeliveryReportDraft(evidenceIDs: evidenceIDs, revision: orders[i].revision, text: text))
         record("Lưu nội dung báo cáo nháp", orderID: id, text)
     }
     mutating func acknowledgeReport(_ id: UUID, reportID: UUID) throws {

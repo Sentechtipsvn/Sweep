@@ -10,7 +10,7 @@ struct DeliveryContact: Codable, Identifiable, Equatable {
     func matches(_ seller: String) -> Bool {
         let key = seller.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return false }
-        return ([name] + aliases.components(separatedBy: ",")).contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).localizedStandardCompare(key) == .orderedSame }
+        return ([name] + aliases.components(separatedBy: ",")).contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "vi_VN")) == key.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "vi_VN")) }
     }
 }
 struct DeliveryPlace: Codable, Identifiable, Equatable {

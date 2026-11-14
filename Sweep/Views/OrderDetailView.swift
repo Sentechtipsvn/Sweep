@@ -125,6 +125,7 @@ struct OrderDetailView: View {
                                 }
                             }
                             NavigationLink("Lịch sử hồ sơ") { OrderHistoryView(id: id) }
+                            if order.voidReason == nil { Button("Điều chỉnh giao / tiền…") { settle = true }.accessibilityIdentifier("order.settle") }
                             if order.voidReason == nil { Button("Hủy hồ sơ nhập nhầm…", role: .destructive) { reason = ""; void = true } }
                             else { Text("Đã hủy: \(order.voidReason ?? "")").foregroundStyle(.secondary) }
                         }
@@ -171,7 +172,9 @@ struct OrderDetailView: View {
         return URL(string: "tel:\(number)")
     }
     private func openDirections(_ address: String) {
-        guard let native = DeliveryDirections.googleMaps(address: address), let web = DeliveryDirections.googleMaps(address: address, native: false) else { return }
+        let saved = order.flatMap { o in (store.ledger.places ?? []).first { $0.key == DeliveryPlace.key(customer: o.customer, address: o.address, kind: "Khách hàng") } }
+        let destination = saved?.destination ?? address
+        guard let native = DeliveryDirections.googleMaps(address: destination), let web = DeliveryDirections.googleMaps(address: destination, native: false) else { return }
         if UIApplication.shared.canOpenURL(native) { UIApplication.shared.open(native) }
         else { UIApplication.shared.open(web) }
     }
@@ -251,8 +254,10 @@ struct SettlementView: View {
     @State private var bank: String
     @State private var date: Date
     @State private var note: String
+    @State private var route: DeliveryRoute?
     init(order: DeliveryOrder) {
         self.order = order
+        _route = State(initialValue: order.settlement?.route)
         _outcome = State(initialValue: order.outcome); _mode = State(initialValue: order.settlement?.mode ?? .none)
         _cash = State(initialValue: String(order.cash)); _bank = State(initialValue: String(order.bank))
         _date = State(initialValue: order.settlement?.at ?? Date()); _note = State(initialValue: order.settlement?.note ?? "")
@@ -265,6 +270,10 @@ struct SettlementView: View {
                     LabeledContent("Tổng đơn", value: VND.format(order.total))
                     Picker("Kết quả giao", selection: $outcome) { ForEach(DeliveryOutcome.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("settle.outcome")
                     Picker("Thanh toán", selection: $mode) { ForEach(PaymentMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("settle.mode")
+                    Picker("Nhánh giao", selection: $route) {
+                        Text("Dữ liệu cũ / chưa phân loại").tag(Optional<DeliveryRoute>.none)
+                        ForEach(DeliveryRoute.allCases, id: \.self) { Text($0.rawValue).tag(Optional($0)) }
+                    }
                     DatePicker("Thời điểm chốt", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                 }
                 Section("Số tiền thực tế · giá trị tổng đã ghi nhận") {
@@ -281,7 +290,7 @@ struct SettlementView: View {
                 Section {
                     Button("Lưu chốt giao / tiền") {
                         do {
-                            let value = Settlement(outcome: outcome, mode: mode, cash: try VND.parse(cash), bank: try VND.parse(bank), note: note, at: date)
+                            let value = Settlement(outcome: outcome, mode: mode, cash: try VND.parse(cash), bank: try VND.parse(bank), note: note, at: date, route: outcome == .delivered ? route : nil)
                             if store.change({ try $0.settle(order.id, value: value) }) { dismiss() }
                         } catch { store.message = error.localizedDescription }
                     }.accessibilityIdentifier("settle.save")
@@ -326,7 +335,7 @@ struct OrderReportView: View {
                         Button("Điền lại") { text = order.shareText(); prepared = nil }
                     }.buttonStyle(.borderless)
                     Button(draftSaved ? "Đã lưu nháp" : "Lưu nháp") {
-                        if store.change({ try $0.saveReportDraft(id, text: text) }) { draftSaved = true }
+                        if store.change({ try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }) { draftSaved = true }
                     }
                 }
                 ForEach(order.requiredReportRoles.filter { role in !order.activeEvidence.contains { $0.role == role } }, id: \.self) { role in
@@ -365,10 +374,15 @@ struct OrderReportView: View {
         .onAppear {
             guard !initialized, let order = store.order(id) else { return }; initialized = true
             text = order.shareText(); selectedIDs = order.defaultShareEvidenceIDs
-            if let draft = order.reportDrafts.last, draft.revision == order.revision, draft.text != order.reportText() { text = draft.text }
+            if let draft = order.reportDrafts.last, draft.revision == order.revision, draft.text != order.reportText() { text = draft.text; if let ids = draft.evidenceIDs { selectedIDs = ids.filter { id in order.shareableEvidence.contains { $0.id == id } } } }
             if let report = order.reports.last, report.revision == order.revision, report.text == text {
                 selectedIDs = report.evidenceIDs; prepared = report
             }
+        }
+        .task(id: text + selectedIDs.map(\.uuidString).joined()) {
+            guard initialized, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            do { try await Task.sleep(for: .milliseconds(600)); try Task.checkCancellation() } catch { return }
+            if !store.busy { _ = store.change { try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) } }
         }
         .onChange(of: text) { _, _ in copied = false; draftSaved = false }
         .onChange(of: store.order(id)?.shareText()) { _, caption in if let caption { text = caption; prepared = nil } }

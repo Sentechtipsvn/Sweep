@@ -161,6 +161,8 @@ extension DeliveryStore {
             let protected = documents.resolvingSymlinksInPath().standardizedFileURL.path
             guard folder != protected, !folder.hasPrefix(protected + "/"), !folder.hasPrefix(root.path) else { throw DeliveryError.invalid("Chọn iCloud Drive hoặc thư mục ngoài Sweep để giữ bản sao.") }
             let snapshot = ledger, dir = evidenceDirectory
+            let pendingInbox = try? SharedInvoiceInbox.live()
+            let pending = reset ? (try pendingInbox?.scan().items ?? []) : []
             let destination = backupFolder.appendingPathComponent("Sweep-before-\(reset ? "reset" : "cleanup")-\(UUID().uuidString.prefix(8)).sweepbackup")
             try await Task.detached(priority: .utility) {
                 let staging = FileManager.default.temporaryDirectory.appendingPathComponent("Backup-check-" + UUID().uuidString)
@@ -168,6 +170,21 @@ extension DeliveryStore {
                 let checked = try DeliveryBackup.prepare(destination, staging: staging)
                 guard checked.ledger == snapshot else { throw DeliveryError.invalid("Bản sao chưa khớp sổ. Chưa xoá dữ liệu.") }
                 withExtendedLifetime(checked) {}
+                if !pending.isEmpty {
+                    let extra = destination.deletingPathExtension().appendingPathExtension("pending")
+                    try FileManager.default.createDirectory(at: extra, withIntermediateDirectories: true)
+                    for item in pending {
+                        try EvidenceFiles.verify(item.evidence, directory: item.directory)
+                        let target = extra.appendingPathComponent(item.id.uuidString)
+                        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+                        for source in [item.image, item.directory.appendingPathComponent("manifest.json")] {
+                            try FileManager.default.copyItem(at: source, to: target.appendingPathComponent(source.lastPathComponent))
+                        }
+                        try EvidenceFiles.verify(item.evidence, directory: target)
+                    }
+                    let scan = try SharedInvoiceInbox(directory: extra).scan()
+                    guard scan.items.count == pending.count, scan.warnings.isEmpty else { throw DeliveryError.invalid("Ảnh chờ chưa sao lưu đủ. Chưa xoá.") }
+                }
             }.value
             // Never delete the live store if anything changed while the backup was checked.
             guard ledger == snapshot else { throw DeliveryError.invalid("Sổ đã đổi; tạo lại bản sao trước khi dọn.") }
@@ -181,11 +198,9 @@ extension DeliveryStore {
                     for file in try FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: nil) { try FileManager.default.removeItem(at: file) }
                 }
                 for file in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) where file.pathExtension == "sweepbackup" { try FileManager.default.removeItem(at: file) }
-                if let inbox = try? SharedInvoiceInbox.live(), FileManager.default.fileExists(atPath: inbox.directory.path) {
-                    // The extension writes to an independent app-group inbox. Only remove already committed entries,
-                    // never an extension's .staging folder or a new share racing with reset.
-                    let scanned = try inbox.scan()
-                    for item in scanned.items where item.receivedAt <= Date() { try inbox.remove(item) }
+                if let inbox = pendingInbox {
+                    // Shares published after backup began remain available; do not race an active extension.
+                    for item in pending { try inbox.remove(item) }
                 }
                 for key in ["photoLimit", "allowCloudScan"] { UserDefaults.standard.removeObject(forKey: key) }
             }
