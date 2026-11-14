@@ -17,21 +17,28 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(invoice.exists); XCTAssertTrue(transfer.exists)
         XCTAssertFalse(app.buttons["report.remove.Phiếu khách ký"].exists)
         transfer.tap(); XCTAssertFalse(transfer.exists)
+        // Image-only edits must survive leaving the composer without changing the caption.
+        app.navigationBars["Chia sẻ đơn"].buttons.element(boundBy: 0).tap()
+        reveal(app.buttons["order.report"], in: app); app.buttons["order.report"].tap()
+        XCTAssertTrue(invoice.waitForExistence(timeout: 10)); XCTAssertFalse(transfer.exists)
         app.buttons["report.chooseImages"].tap()
         let transferChoice = app.buttons["report.select.Ảnh giao dịch"]
         XCTAssertTrue(transferChoice.waitForExistence(timeout: 5)); transferChoice.tap()
-        app.buttons["report.select.Phiếu khách ký"].tap()
+        XCTAssertFalse(app.buttons["report.select.Phiếu khách ký"].exists)
         app.buttons["report.imagesDone"].tap()
         let signature = app.buttons["report.remove.Phiếu khách ký"]
-        reveal(signature, in: app); XCTAssertTrue(signature.exists); signature.tap()
+        XCTAssertFalse(signature.exists)
         XCTAssertTrue(transfer.exists); XCTAssertTrue(invoice.exists)
-        reveal(app.buttons["report.prepare"], in: app); app.buttons["report.prepare"].tap()
-        XCTAssertTrue(app.buttons["report.share"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["report.prepare"].exists)
+        reveal(app.buttons["report.share"], in: app); app.buttons["report.share"].tap()
+        dismissActivity(in: app)
+        XCTAssertTrue(app.alerts.buttons["Chưa gửi"].waitForExistence(timeout: 10)); app.alerts.buttons["Chưa gửi"].tap()
+        XCTAssertTrue(app.buttons["report.ack"].waitForExistence(timeout: 10)); XCTAssertTrue(app.buttons["report.ack"].isEnabled)
         XCTAssertFalse(app.buttons["report.remove.Phiếu khách ký"].exists)
         attach(app, name: "report-two-selected-images-short-caption")
-        app.buttons["report.chooseImages"].tap()
-        XCTAssertTrue(app.buttons["report.select.Phiếu khách ký"].waitForExistence(timeout: 5))
-        attach(app, name: "report-original-signature-still-available")
+        app.buttons["report.ack"].tap(); app.alerts.buttons["Đúng, đã gửi"].tap()
+        XCTAssertFalse(app.buttons["report.ack"].isEnabled)
+        attach(app, name: "report-explicit-sent-confirmation")
     }
 
     func testReconciliationEmptyMonthHasNoFiguresFromAnotherMonth() throws {
@@ -167,9 +174,12 @@ final class SweepUITests: XCTestCase {
         note.tap(); note.typeText("Hen giao lai, da nhan mot phan")
         dismissKeyboard(in: app)
         reveal(app.buttons["settle.save"], in: app); app.buttons["settle.save"].tap()
+        XCTAssertTrue(app.alerts.buttons["Xác nhận lưu"].waitForExistence(timeout: 5)); app.alerts.buttons["Xác nhận lưu"].tap()
         XCTAssertTrue(app.buttons["order.settle"].waitForExistence(timeout: 5))
         reveal(app.buttons["order.report"], in: app); app.buttons["order.report"].tap()
-        reveal(app.buttons["report.prepare"], in: app); app.buttons["report.prepare"].tap()
+        reveal(app.buttons["report.share"], in: app); app.buttons["report.share"].tap()
+        dismissActivity(in: app)
+        XCTAssertTrue(app.alerts.buttons["Chưa gửi"].waitForExistence(timeout: 10)); app.alerts.buttons["Chưa gửi"].tap()
         let ack = app.buttons["report.ack"]
         reveal(ack, in: app); XCTAssertTrue(ack.waitForExistence(timeout: 5)); XCTAssertTrue(ack.isEnabled)
         // Preparing/sharing is not a sent receipt. Only the explicit user acknowledgement changes this state.
@@ -261,6 +271,15 @@ final class SweepUITests: XCTestCase {
             let scroll = collection ?? table ?? app.scrollViews.allElementsBoundByIndex.last { $0.isHittable }
             if let scroll { scroll.swipeUp() } else { app.swipeUp() }
         }
+    }
+
+    private func dismissActivity(in app: XCUIApplication) {
+        let close = app.buttons["Close"]
+        if close.waitForExistence(timeout: 8), close.isHittable { close.tap(); return }
+        let localized = app.buttons["Đóng"]
+        if localized.exists && localized.isHittable { localized.tap(); return }
+        // The system activity sheet also supports the standard modal dismissal gesture.
+        app.swipeDown()
     }
 
     private func assertRow(_ id: String, contains text: String, in app: XCUIApplication) {

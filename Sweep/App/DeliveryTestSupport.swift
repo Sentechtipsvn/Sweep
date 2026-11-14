@@ -24,7 +24,7 @@ extension DeliveryStore {
         guard ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing"), let order = ledger.orders.first, order.settlement == nil else { return }
         _ = change { ledger in
             try ledger.sign(order.id, at: Date())
-            try ledger.settle(order.id, value: Settlement(outcome: .delivered, mode: .mixed, cash: 665_000, bank: 1_500_000, note: "", at: Date()))
+            try ledger.settle(order.id, value: Settlement(outcome: .delivered, mode: .mixed, cash: 665_000, bank: 1_500_000, note: "", at: Date(), route: .transferNow))
             try ledger.handover(500_000, at: Date(), note: "UI test monthly remittance")
         }
     }
@@ -34,7 +34,8 @@ extension DeliveryStore {
         _ = change { ledger in
             // Official VietQR documentation's public example; never part of a Release build.
             ledger.settings.vietQR = VietQRAccount(bankID: "ICB", accountNumber: "113366668888", accountName: "PUBLIC DEMO ACCOUNT")
-            try ledger.settle(order.id, value: Settlement(outcome: .delivered, mode: .bank, cash: 0, bank: order.total, note: "UI test: recorded transfer", at: Date()))
+            try ledger.sign(order.id, at: Date())
+            try ledger.settle(order.id, value: Settlement(outcome: .delivered, mode: .bank, cash: 0, bank: order.total, note: "UI test: recorded transfer", at: Date(), route: .transferNow))
         }
     }
 

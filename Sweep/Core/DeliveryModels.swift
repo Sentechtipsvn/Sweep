@@ -121,6 +121,7 @@ struct DeliveryReportDraft: Codable, Identifiable, Equatable {
     var revision: Int
     var text: String
     var at = Date()
+    var contentKey: String? = nil
 }
 struct ReportAcknowledgement: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -141,6 +142,7 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var sourceSnapshot: String?
     var salesperson: String? = nil
     var locationPromptedAt: Date? = nil
+    var freightPlaceID: UUID? = nil
     var reviewNote = ""
     var note = ""
     var revision = 1
@@ -173,10 +175,28 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     }
     var reportSent: Bool {
         guard let report = reports.last else { return false }
-        if let draft = reportDrafts.last, draft.at > report.preparedAt,
+        if let draft = currentReportDraft, draft.at > report.preparedAt,
            draft.text != report.text || (draft.evidenceIDs != nil && draft.evidenceIDs != report.evidenceIDs) { return false }
         let current = report.contentKey.map { $0 == reportContentKey } ?? (report.revision == revision)
         return current && Set(report.evidenceIDs).isSubset(of: Set(activeEvidence.map(\.id))) && reportAcks.contains { $0.reportID == report.id }
+    }
+    var currentReportDraft: DeliveryReportDraft? {
+        guard let draft = reportDrafts.last,
+              draft.contentKey.map({ $0 == reportContentKey }) ?? (draft.revision == revision) else { return nil }
+        return draft
+    }
+    /// Restore the same text and image selection even after an unrelated contact/location edit.
+    var reportComposition: (text: String, evidenceIDs: [UUID]) {
+        let report: DeliveryReport? = reports.last.flatMap { value in
+            (value.contentKey.map { $0 == reportContentKey } ?? (value.revision == revision)) ? value : nil
+        }
+        let allowed = Set(shareableEvidence.map(\.id))
+        if let draft = currentReportDraft, draft.at >= (report?.preparedAt ?? .distantPast) {
+            return (draft.text == reportText() ? shareText() : draft.text,
+                    (draft.evidenceIDs ?? defaultShareEvidenceIDs).filter { allowed.contains($0) })
+        }
+        if let report { return (report.text, report.evidenceIDs.filter { allowed.contains($0) }) }
+        return (shareText(), defaultShareEvidenceIDs)
     }
     var requiresReport: Bool { settlement != nil && settlement?.route != .cashFull }
     var reportNeeded: Bool { requiresReport && !reportSent && voidReason == nil }
@@ -320,7 +340,8 @@ struct DeliveryLedger: Codable, Equatable {
         try value.validate(total: orders[i].total)
         if value.route != nil, orders[i].activeAssignments.isEmpty { throw DeliveryError.invalid("Xác nhận đã ký nhận trước khi chốt giao.") }
         if let previous = orders[i].settlement, previous.cash == value.cash, previous.bank == value.bank,
-           previous.mode == value.mode, previous.outcome == value.outcome, previous.note == value.note, previous.at == value.at { return }
+           previous.mode == value.mode, previous.outcome == value.outcome, previous.note == value.note,
+           previous.at == value.at, previous.route == value.route { return }
         guard cashCollected - orders[i].cash + value.cash >= cashHanded else {
             throw DeliveryError.invalid("Điều chỉnh làm tiền đã thu thấp hơn số đã nộp. Kiểm tra sổ nộp tiền trước.")
         }
@@ -352,7 +373,9 @@ struct DeliveryLedger: Codable, Equatable {
             let selectedRoles = Set(orders[i].activeEvidence.filter { evidence.contains($0.id) }.map(\.role))
             guard Set(orders[i].requiredReportRoles).isSubset(of: selectedRoles) else { throw DeliveryError.invalid("Chọn đủ: " + orders[i].requiredReportRoles.map(\.rawValue).joined(separator: ", ")) }
         }
-        if let previous = orders[i].reports.last, previous.revision == orders[i].revision, previous.text == text, previous.evidenceIDs == evidence { return previous }
+        if let previous = orders[i].reports.last,
+           (previous.contentKey.map { $0 == orders[i].reportContentKey } ?? (previous.revision == orders[i].revision)),
+           previous.text == text, previous.evidenceIDs == evidence { return previous }
         let report = DeliveryReport(revision: orders[i].revision, text: text, evidenceIDs: evidence, contentKey: orders[i].reportContentKey)
         orders[i].reports.append(report); record("Chuẩn bị báo cáo", orderID: id, report.id.uuidString)
         return report
@@ -360,14 +383,18 @@ struct DeliveryLedger: Codable, Equatable {
     mutating func saveReportDraft(_ id: UUID, text: String, evidenceIDs: [UUID]? = nil) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].voidReason == nil,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nội dung nháp đang trống hoặc hồ sơ không hợp lệ.") }
-        if let draft = orders[i].reportDrafts.last, draft.text == text, draft.evidenceIDs == evidenceIDs, draft.revision == orders[i].revision { return }
-        if let report = orders[i].reports.last, report.text != text, report.revision == orders[i].revision { orders[i].revision += 1 }
-        orders[i].reportDrafts.append(DeliveryReportDraft(evidenceIDs: evidenceIDs, revision: orders[i].revision, text: text))
+        if let draft = orders[i].currentReportDraft, draft.text == text, draft.evidenceIDs == evidenceIDs { return }
+        orders[i].reportDrafts.append(DeliveryReportDraft(evidenceIDs: evidenceIDs, revision: orders[i].revision, text: text, contentKey: orders[i].reportContentKey))
         record("Lưu nội dung báo cáo nháp", orderID: id, text)
     }
     mutating func acknowledgeReport(_ id: UUID, reportID: UUID) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), let report = orders[i].reports.last,
               report.id == reportID, (report.contentKey.map { $0 == orders[i].reportContentKey } ?? (report.revision == orders[i].revision)) else { throw DeliveryError.invalid("Hồ sơ đã đổi. Chuẩn bị lại báo cáo trước khi xác nhận gửi.") }
+        guard Set(report.evidenceIDs).isSubset(of: Set(orders[i].shareableEvidence.map(\.id))) else { throw DeliveryError.invalid("Bộ ảnh đã đổi. Chọn lại ảnh trước khi xác nhận gửi.") }
+        if let draft = orders[i].currentReportDraft, draft.at > report.preparedAt,
+           draft.text != report.text || (draft.evidenceIDs != nil && draft.evidenceIDs != report.evidenceIDs) {
+            throw DeliveryError.invalid("Nội dung hoặc bộ ảnh đã đổi. Chia sẻ lại bản đang xem trước khi xác nhận.")
+        }
         guard !orders[i].reportAcks.contains(where: { $0.reportID == reportID }) else { return }
         orders[i].reportAcks.append(ReportAcknowledgement(reportID: reportID))
         record("Sếp xác nhận đã gửi", orderID: id, reportID.uuidString)

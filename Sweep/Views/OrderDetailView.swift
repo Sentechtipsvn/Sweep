@@ -27,10 +27,12 @@ struct OrderDetailView: View {
                                 Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 230) }.buttonStyle(.plain)
                                     .overlay(alignment: .topTrailing) {
                                         Menu {
-                                            if let seller = order.salesperson, let contact = (store.ledger.contacts ?? []).first(where: { $0.matches(seller) }) {
+                                            let matches = (store.ledger.contacts ?? []).filter { $0.matches(order.salesperson ?? "") }
+                                            if matches.count == 1, let contact = matches.first {
                                                 if let u = phoneURL(contact.phone) { Link("Gọi \(contact.name)", destination: u) }
                                                 if let u = URL(string: contact.zalo), !contact.zalo.isEmpty { Link("Zalo \(contact.name)", destination: u) }
                                             } else {
+                                                NavigationLink("Chọn liên hệ bán hàng") { ContactsView(seller: order.salesperson ?? "") }
                                                 NavigationLink("Thêm liên hệ bán hàng") { ContactEditor(initialName: order.salesperson ?? "", role: "Bán hàng") }
                                             }
                                         } label: { Image(systemName: "ellipsis.circle.fill").font(.title).symbolRenderingMode(.palette).foregroundStyle(.blue, .white).padding(8) }.accessibilityLabel("Liên hệ bán hàng")
@@ -174,7 +176,12 @@ struct OrderDetailView: View {
         return URL(string: "tel:\(number)")
     }
     private func openDirections(_ address: String) {
-        let saved = order.flatMap { o in (store.ledger.places ?? []).first { $0.key == DeliveryPlace.key(customer: o.customer, address: o.address, kind: "Khách hàng") } }
+        let saved = order.flatMap { o in
+            (store.ledger.places ?? []).first {
+                if o.settlement?.route == .freight { return $0.id == o.freightPlaceID }
+                return $0.key == DeliveryPlace.key(customer: o.customer, address: o.address, kind: "Khách hàng", phone: o.phone)
+            }
+        }
         let destination = saved?.destination ?? address
         guard let native = DeliveryDirections.googleMaps(address: destination), let web = DeliveryDirections.googleMaps(address: destination, native: false) else { return }
         if UIApplication.shared.canOpenURL(native) { UIApplication.shared.open(native) }
@@ -257,6 +264,8 @@ struct SettlementView: View {
     @State private var date: Date
     @State private var note: String
     @State private var route: DeliveryRoute?
+    @State private var pending: Settlement?
+    @State private var confirm = false
     init(order: DeliveryOrder) {
         self.order = order
         _route = State(initialValue: order.settlement?.route)
@@ -285,21 +294,28 @@ struct SettlementView: View {
                         LabeledContent(remaining < 0 ? "Ghi nhận thừa" : "Còn theo ghi nhận", value: VND.format(abs(remaining)))
                             .foregroundStyle(remaining == 0 ? .green : .orange).accessibilityIdentifier("settle.remaining")
                     }
-                    Button("Thu đủ bằng tiền mặt") { cash = String(order.total); bank = "0"; mode = .cash }
-                    Button("CK sau, chưa nhận khoản nào") { cash = "0"; bank = "0"; mode = .deferred }
+                    Button("Thu đủ bằng tiền mặt") { cash = String(order.total); bank = "0"; mode = .cash; route = .cashFull }
+                    Button("CK sau, chưa nhận khoản nào") { cash = "0"; bank = "0"; mode = .deferred; route = .transferLater }
                 }
                 Section("Ghi chú / lý do hoãn, thất bại") { TextField("Nội dung", text: $note, axis: .vertical).lineLimit(3...6).accessibilityIdentifier("settle.note") }
                 Section {
                     Button("Lưu chốt giao / tiền") {
                         do {
                             let value = Settlement(outcome: outcome, mode: mode, cash: try VND.parse(cash), bank: try VND.parse(bank), note: note, at: date, route: outcome == .delivered ? route : nil)
-                            if store.change({ try $0.settle(order.id, value: value) }) { dismiss() }
+                            try value.validate(total: order.total)
+                            pending = value; confirm = true
                         } catch { store.message = error.localizedDescription }
                     }.accessibilityIdentifier("settle.save")
                 }
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Chốt giao / thu tiền").navigationBarTitleDisplayMode(.inline)
+            .alert("Lưu điều chỉnh giao / tiền?", isPresented: $confirm) {
+                Button("Xác nhận lưu") { if let pending, store.change({ try $0.settle(order.id, value: pending) }) { dismiss() } }
+                Button("Kiểm tra lại", role: .cancel) {}
+            } message: {
+                if let pending { Text("\(pending.outcome.rawValue) · TM \(VND.format(pending.cash)) · CK \(VND.format(pending.bank)). Đây là tổng khoản đã thu của đơn, không cộng thêm lần nữa.") }
+            }
             .toolbar {
                 CloseSheet { dismiss() }
                 ToolbarItemGroup(placement: .keyboard) {
@@ -316,6 +332,7 @@ struct SettlementView: View {
 struct OrderReportView: View {
     let id: UUID
     @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.scenePhase) private var scenePhase
     @State private var text = ""
     @State private var selectedIDs: [UUID] = []
     @State private var initialized = false
@@ -357,14 +374,15 @@ struct OrderReportView: View {
                         }
                     }
                     Button { choosingImages = true } label: { Label("Chọn ảnh gửi", systemImage: "plus") }.accessibilityIdentifier("report.chooseImages")
-                    Button("Chuẩn bị chia sẻ") {
-                        Task { prepared = await store.prepareReport(id, text: text, evidenceIDs: selectedIDs) }
-                    }.disabled(order.settlement == nil || store.busy).accessibilityIdentifier("report.prepare")
+                    Button("Chia sẻ vào nhóm") { startShare(includeText: true) }
+                        .buttonStyle(SweepPill(selected: true))
+                        .disabled(order.settlement == nil || store.busy).accessibilityIdentifier("report.share")
+                    Button("Chỉ gửi ảnh") { startShare(includeText: false) }.disabled(selectedIDs.isEmpty || store.busy)
                 }
-                if let prepared, prepared.text == text, prepared.revision == order.revision, prepared.evidenceIDs == selectedIDs {
+                if let prepared, prepared.text == text,
+                   (prepared.contentKey.map { $0 == order.reportContentKey } ?? (prepared.revision == order.revision)),
+                   prepared.evidenceIDs == selectedIDs {
                     Section {
-                        Button("Chia sẻ nội dung và ảnh") { share(prepared, order: order, includeText: true) }.accessibilityIdentifier("report.share")
-                        Button("Chỉ gửi ảnh") { share(prepared, order: order, includeText: false) }.disabled(selectedIDs.isEmpty)
                         Button(order.reportSent ? "Đã xác nhận gửi" : "Đã gửi nhóm…") { confirm = true }
                             .disabled(order.reportSent).accessibilityIdentifier("report.ack")
                     }
@@ -375,22 +393,22 @@ struct OrderReportView: View {
         .disabled(store.busy)
         .onAppear {
             guard !initialized, let order = store.order(id) else { return }; initialized = true
-            text = order.shareText(); selectedIDs = order.defaultShareEvidenceIDs
-            if let draft = order.reportDrafts.last, draft.revision == order.revision, draft.text != order.reportText() { text = draft.text; if let ids = draft.evidenceIDs { selectedIDs = ids.filter { id in order.shareableEvidence.contains { $0.id == id } } } }
-            if let report = order.reports.last, report.revision == order.revision, report.text == text {
-                selectedIDs = report.evidenceIDs; prepared = report
+            let composition = order.reportComposition
+            text = composition.text; selectedIDs = composition.evidenceIDs
+            if let report = order.reports.last,
+               (report.contentKey.map { $0 == order.reportContentKey } ?? (report.revision == order.revision)),
+               report.text == text, report.evidenceIDs == selectedIDs {
+                prepared = report
             }
         }
         .task(id: text + selectedIDs.map(\.uuidString).joined()) {
             guard initialized, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             do { try await Task.sleep(for: .milliseconds(600)); try Task.checkCancellation() } catch { return }
-            if !store.busy { _ = store.change { try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) } }
+            saveDraft()
         }
-        .onDisappear {
-            if initialized, !store.busy, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                _ = store.change { try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }
-            }
-        }
+        .onDisappear { saveDraft() }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { saveDraft() } }
+        .onChange(of: selectedIDs) { _, _ in draftSaved = false; saveDraft() }
         .onChange(of: text) { _, _ in copied = false; draftSaved = false }
         .onChange(of: store.order(id)?.shareText()) { _, caption in if let caption { text = caption; prepared = nil } }
         .onChange(of: store.order(id)?.orderedEvidence.map(\.id)) { previous, ids in
@@ -425,8 +443,16 @@ struct OrderReportView: View {
             Button("Chưa gửi", role: .cancel) {}
         }
     }
-    private func share(_ report: DeliveryReport, order: DeliveryOrder, includeText: Bool) {
+    private func saveDraft() {
+        guard initialized, !store.busy, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        _ = store.change { try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }
+    }
+    private func startShare(includeText: Bool) {
         Task {
+            guard store.change({ try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }),
+                  let report = await store.prepareReport(id, text: text, evidenceIDs: selectedIDs),
+                  let order = store.order(id) else { return }
+            prepared = report
             if let urls = await store.outgoing(report, order: order) {
                 sharing = DeliveryShare(items: (includeText ? [report.text as Any] : []) + urls.map { $0 as Any })
             }

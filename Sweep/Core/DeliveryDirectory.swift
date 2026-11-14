@@ -25,10 +25,12 @@ struct DeliveryPlace: Codable, Identifiable, Equatable {
         if let lat = latitude, let lon = longitude { return "\(lat),\(lon)" }
         return address
     }
-    static func key(customer: String, address: String, kind: String) -> String {
-        [customer, address, kind].map { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "vi_VN")).split(whereSeparator: \.isWhitespace).joined(separator: " ") }.joined(separator: "|")
+    static func key(customer: String, address: String, kind: String, phone: String = "") -> String {
+        var number = phone.filter(\.isNumber)
+        if number.hasPrefix("84"), number.count == 11 { number = "0" + String(number.dropFirst(2)) }
+        return [customer, address, kind, number].map { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "vi_VN")).split(whereSeparator: \.isWhitespace).joined(separator: " ") }.joined(separator: "|")
     }
-    var key: String { Self.key(customer: customer, address: address, kind: kind) }
+    var key: String { Self.key(customer: customer, address: address, kind: kind, phone: phone) }
 }
 extension DeliveryLedger {
     mutating func saveContact(_ value: DeliveryContact) throws {
@@ -50,7 +52,9 @@ extension DeliveryLedger {
         places = list; record("Lưu vị trí", value.customer)
     }
     func hasPlace(for order: DeliveryOrder) -> Bool {
-        let kind = order.settlement?.route == .freight ? "Chành xe" : "Khách hàng"
-        return (places ?? []).contains { $0.key == DeliveryPlace.key(customer: order.customer, address: order.address, kind: kind) }
+        if order.settlement?.route == .freight {
+            return (places ?? []).contains { $0.id == order.freightPlaceID && $0.kind == "Chành xe" }
+        }
+        return (places ?? []).contains { $0.key == DeliveryPlace.key(customer: order.customer, address: order.address, kind: "Khách hàng", phone: order.phone) }
     }
 }

@@ -8,11 +8,19 @@ func openGoogleMaps(_ destination: String) {
 }
 struct ContactsView: View {
     var editable = false
+    var seller: String? = nil
     @EnvironmentObject private var store: DeliveryStore
     @State private var query = ""
+    private var contacts: [DeliveryContact] {
+        let all = store.ledger.contacts ?? []
+        guard let seller else { return all }
+        let matches = all.filter { $0.matches(seller) }
+        return matches.isEmpty ? all.filter { $0.role == "Bán hàng" } : matches
+    }
     var body: some View {
         List {
-            ForEach((store.ledger.contacts ?? []).filter { query.isEmpty || ($0.name + $0.phone + $0.aliases).localizedStandardContains(query) }) { contact in
+            if seller != nil { Text("Chọn đúng người bán hàng trên phiếu để liên hệ.").font(.subheadline).foregroundStyle(.secondary) }
+            ForEach(contacts.filter { query.isEmpty || ($0.name + $0.phone + $0.aliases).localizedStandardContains(query) }) { contact in
                 VStack(alignment: .leading, spacing: 10) {
                     HStack { Text(contact.name).font(.headline); Spacer(); Text(contact.role).font(.caption).foregroundStyle(.secondary) }
                     HStack {
@@ -46,7 +54,7 @@ struct ContactEditor: View {
                 TextField("Tên", text: $name)
                 TextField("Số điện thoại", text: $phone).keyboardType(.phonePad)
                 TextField("Link hồ sơ / QR Zalo", text: $zalo).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Picker("Nhóm", selection: $kind) { ForEach(["Bán hàng", "Tài xế", "Khác"], id: \.self) { Text($0) } }
+                Picker("Nhóm", selection: $kind) { ForEach(["Bán hàng", "Tài xế", "Chành xe", "Khác"], id: \.self) { Text($0) } }
                 TextField("Mã trên phiếu, ví dụ TEL", text: $aliases)
                 Text("Nhiều mã cách nhau bằng dấu phẩy. Không dùng số khách để liên hệ bán hàng.").font(.caption).foregroundStyle(.secondary)
             }
@@ -73,8 +81,10 @@ struct PlacesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack { Text(place.customer).font(.headline); Spacer(); Text(place.kind).font(.caption).foregroundStyle(.secondary) }
                     Text(place.address).font(.subheadline)
+                    if !place.phone.isEmpty { Text(place.phone).font(.subheadline).textSelection(.enabled) }
                     HStack {
                         Button("Google Maps") { openGoogleMaps(place.destination) }.buttonStyle(SweepPill())
+                        if !place.phone.isEmpty, let phone = URL(string: "tel:" + place.phone.filter { $0.isNumber || $0 == "+" }) { Link("Gọi", destination: phone).buttonStyle(SweepPill()) }
                         NavigationLink { PlaceEditor(place: place) } label: { Image(systemName: "pencil") }.accessibilityLabel("Sửa vị trí")
                     }
                 }.padding(.vertical, 5)
@@ -88,6 +98,7 @@ struct PlacesView: View {
 final class DeliveryGPS: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var coordinate: CLLocationCoordinate2D?
     @Published var problem = ""
+    @Published var accuracy: Double?
     private let manager = CLLocationManager()
     private var requested = false
     override init() { super.init(); manager.delegate = self; manager.desiredAccuracy = kCLLocationAccuracyBest }
@@ -100,7 +111,12 @@ final class DeliveryGPS: NSObject, ObservableObject, CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if requested && (manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways) { manager.requestLocation() }
     }
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) { coordinate = locations.last?.coordinate }
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last, location.horizontalAccuracy >= 0, abs(location.timestamp.timeIntervalSinceNow) < 60 else {
+            problem = "Chưa nhận được vị trí mới. Sếp thử lại hoặc chọn trên bản đồ."; return
+        }
+        accuracy = location.horizontalAccuracy; coordinate = location.coordinate
+    }
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { problem = error.localizedDescription }
 }
 struct PlaceEditor: View {
@@ -133,6 +149,7 @@ struct PlaceEditor: View {
                 Button("Chọn trên bản đồ") { prepareMap() }
                 if locating { ProgressView() }
                 if !gps.problem.isEmpty { Text(gps.problem).font(.caption).foregroundStyle(.red) }
+                if let accuracy = gps.accuracy { Text("Độ chính xác GPS khoảng \(Int(accuracy.rounded())) m. Kiểm tra lại điểm trước khi lưu.").font(.caption).foregroundStyle(.secondary) }
                 TextField("Vĩ độ", text: $lat).keyboardType(.numbersAndPunctuation)
                 TextField("Kinh độ", text: $lon).keyboardType(.numbersAndPunctuation)
             }
@@ -180,6 +197,12 @@ struct PlaceEditor: View {
     private func save() {
         if (!lat.isEmpty && Double(lat) == nil) || (!lon.isEmpty && Double(lon) == nil) { store.message = "Tọa độ phải là số, dùng dấu chấm thập phân."; return }
         let value = DeliveryPlace(id: place?.id ?? UUID(), customer: customer, phone: phone, address: address, kind: kind, latitude: Double(lat), longitude: Double(lon))
-        if store.change({ try $0.savePlace(value) }) { dismiss() }
+        if store.change({ ledger in
+            try ledger.savePlace(value)
+            if let order, order.settlement?.route == .freight, kind == "Chành xe",
+               let i = ledger.orders.firstIndex(where: { $0.id == order.id }) {
+                ledger.orders[i].freightPlaceID = ledger.places?.first(where: { $0.key == value.key })?.id
+            }
+        }) { dismiss() }
     }
 }

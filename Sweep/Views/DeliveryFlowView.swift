@@ -10,10 +10,10 @@ struct DeliveryFlowView: View {
     @State private var partial = ""
     @State private var bankAmount = ""
     @State private var confirmCash = false
+    @State private var confirmPartialNow = false
     @State private var confirmBank = false
     @State private var confirmFreight = false
     @State private var confirmLater = false
-    @State private var routeToReport = false
     private var order: DeliveryOrder? { store.order(id) }
     var body: some View {
         NavigationStack {
@@ -61,7 +61,7 @@ struct DeliveryFlowView: View {
                                     Section("Tiền mặt thực nhận") {
                                         MoneyInput(title: "Đã nhận", text: $partial, identifier: "flow.cash")
                                         if let c = try? VND.parse(partial), c <= order.total { LabeledContent("Còn lại", value: VND.format(order.total-c)) }
-                                        Button("Phần còn lại chuyển khoản ngay") { savePartial(now: true) }
+                                        Button("Phần còn lại chuyển khoản ngay") { confirmPartialNow = true }
                                         Button("Phần còn lại chuyển khoản sau…") { confirmLater = true }
                                     }
                                 }
@@ -94,6 +94,10 @@ struct DeliveryFlowView: View {
                 Button("Xác nhận khoản thực nhận") { confirmTransfer() }
                 Button("Chưa nhận", role: .cancel) {}
             } message: { Text("Kiểm tra giao dịch thực tế. Đóng QR không ghi nhận tiền.") }
+            .alert("Xác nhận tiền mặt đã nhận?", isPresented: $confirmPartialNow) {
+                Button("Đã nhận, mở QR phần còn lại") { savePartial(now: true) }
+                Button("Kiểm tra lại", role: .cancel) {}
+            } message: { Text("Tiền mặt \(partial)₫ sẽ được lưu trước khi mở QR. Đóng QR vẫn giữ khoản đã nhận.") }
             .alert("Khách chuyển khoản sau?", isPresented: $confirmLater) {
                 Button("Xác nhận, chọn phiếu đã ký") {
                     if method == .cash { savePartial(now: false) }
@@ -115,7 +119,11 @@ struct DeliveryFlowView: View {
         guard let order else { return }
         do {
             let c = try VND.parse(partial)
-            guard c < order.total, c + order.bank < order.total else { throw DeliveryError.invalid("Thu đủ: chọn Thu đủ tiền mặt. Khoản thu một phần phải nhỏ hơn tổng đơn.") }
+            guard c >= order.cash else { throw DeliveryError.invalid("Đã ghi nhận tiền mặt \(VND.format(order.cash)). Dùng Điều chỉnh giao / tiền nếu cần sửa khoản đã lưu.") }
+            guard c + order.bank <= order.total else { throw DeliveryError.invalid("Khoản đã nhận vượt tổng đơn. Kiểm tra lại số tiền.") }
+            if c == order.total, order.bank == 0 {
+                if save(cash: c, bank: 0, route: .cashFull) { dismiss() }; return
+            }
             if c == 0 && now { stage = "qr"; return }
             if save(cash: c, bank: order.bank, route: .transferLater) { stage = now ? "qr" : "proof" }
         } catch { store.message = error.localizedDescription }
