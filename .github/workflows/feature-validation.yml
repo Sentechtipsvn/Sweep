@@ -66,7 +66,7 @@ jobs:
         run: |
           brew install xcodegen
           xcodegen generate
-      - name: Check Bill import still works on simulator
+      - name: Verify shared image confirmation after presentation
         run: |
           set -o pipefail
           SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,items in d["devices"].items() if "iOS-18-5" in runtime for x in items if x["name"] == "iPhone 16"))')
@@ -74,21 +74,33 @@ jobs:
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
           xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build-simulator \
+            -resultBundlePath build-share-ui.xcresult CODE_SIGNING_ALLOWED=NO \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 \
+            -only-testing:SweepUITests/SweepUITests/testSharedImageReviewImportQRSetupAndRelaunch test | tee share-test.log
+      - name: Verify remaining delivery screens and new tools
+        run: |
+          set -o pipefail
+          SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,items in d["devices"].items() if "iOS-18-5" in runtime for x in items if x["name"] == "iPhone 16"))')
+          xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build-simulator \
             -resultBundlePath build-ui.xcresult CODE_SIGNING_ALLOWED=NO \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 \
             -only-testing:SweepUITests/SweepUITests/testBillPreviewOCRImportAndRelaunch \
             -only-testing:SweepUITests/SweepUITests/testRecordedTransferStillDisplaysQRCode \
-            -only-testing:SweepUITests/SweepUITests/testSharedImageReviewImportQRSetupAndRelaunch \
             -only-testing:SweepUITests/SweepUITests/testReportImageSelectionAndCompactTransferCaption \
             -only-testing:SweepUITests/SweepUITests/testReconciliationEmptyMonthHasNoFiguresFromAnotherMonth \
             -only-testing:SweepUITests/SweepUITests/testIntakeHasOnlyPhotoAndCameraSourcesAtLargeTextSize \
             -only-testing:SweepUITests/SweepUITests/testApprovedCashWorkflowAndNewTools \
             -only-testing:SweepUITests/SweepUITests/testUpdate02CompactContactsAndPlaces \
-            -only-testing:SweepUITests/SweepUITests/testUpdate02AttendanceCalendarSavesAndPersists test | tee simulator-test.log
+            -only-testing:SweepUITests/SweepUITests/testUpdate02AttendanceCalendarSavesAndPersists test-without-building | tee simulator-test.log
       - name: Export screenshots
         if: always()
         run: |
+          if [ -d build-share-ui.xcresult ]; then
+            xcrun xcresulttool export attachments --path build-share-ui.xcresult --output-path ui-share-screenshots || true
+          fi
           if [ -d build-ui.xcresult ]; then
             xcrun xcresulttool export attachments --path build-ui.xcresult --output-path ui-screenshots || true
           fi
@@ -98,6 +110,8 @@ jobs:
           name: Sweep-feature-validation-evidence
           path: |
             build.log
+            share-test.log
             simulator-test.log
+            ui-share-screenshots/
             ui-screenshots/
           if-no-files-found: ignore

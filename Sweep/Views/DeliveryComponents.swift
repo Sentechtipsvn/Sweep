@@ -10,6 +10,23 @@ private enum EvidenceThumbnails {
     }()
 }
 
+/// SwiftUI onAppear can run before a modal transition finishes. Offer alerts only once UIKit has appeared.
+struct SweepAppearanceAction: UIViewControllerRepresentable {
+    let action: () -> Void
+    func makeUIViewController(context: Context) -> Controller { Controller(action: action) }
+    func updateUIViewController(_ controller: Controller, context: Context) { controller.action = action }
+    final class Controller: UIViewController {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action; super.init(nibName: nil, bundle: nil) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func loadView() { view = UIView(); view.backgroundColor = .clear }
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            DispatchQueue.main.async { [weak self] in self?.action() }
+        }
+    }
+}
+
 struct EvidenceThumbnail: View {
     let url: URL
     var height: CGFloat = 160

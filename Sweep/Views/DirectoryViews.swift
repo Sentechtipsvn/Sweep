@@ -9,6 +9,30 @@ func openGoogleMaps(_ destination: String) {
     guard let native = DeliveryDirections.googleMaps(address: destination), let web = DeliveryDirections.googleMaps(address: destination, native: false) else { return }
     UIApplication.shared.open(UIApplication.shared.canOpenURL(native) ? native : web)
 }
+private struct DirectoryHeading: View {
+    let title: String
+    let kind: String
+    let edit: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
+    private var editLabel: some View {
+        HStack(spacing: 2) {
+            Text(kind).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: true, vertical: false)
+            Button(action: edit) { Image(systemName: "pencil").frame(width: 44, height: 44) }
+                .buttonStyle(.borderless).accessibilityLabel("Sửa " + title)
+        }
+    }
+    var body: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 4) { Text(title).font(.headline); editLabel }
+        } else {
+            HStack(alignment: .center, spacing: 8) {
+                Text(title).font(.headline).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                editLabel
+            }
+        }
+    }
+}
 private struct ContactDraft: Identifiable {
     var id = UUID()
     var contact: DeliveryContact?
@@ -34,15 +58,7 @@ struct ContactsView: View {
             if seller != nil { Text("Chọn đúng người bán hàng trên phiếu để liên hệ.").font(.subheadline).foregroundStyle(.secondary) }
             ForEach(contacts.filter { query.isEmpty || ($0.name + $0.phone + $0.aliases).localizedStandardContains(query) }) { contact in
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .top) {
-                        Text(contact.name).font(.headline).fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 12)
-                        VStack(alignment: .trailing, spacing: 0) {
-                            Text(contact.role).font(.caption).foregroundStyle(.secondary)
-                            Button { draft = ContactDraft(contact: contact) } label: { Image(systemName: "pencil").frame(width: 44, height: 44) }
-                                .buttonStyle(.borderless).accessibilityLabel("Sửa " + contact.name)
-                        }
-                    }
+                    DirectoryHeading(title: contact.name, kind: contact.role) { draft = ContactDraft(contact: contact) }
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
                             if !contact.phone.isEmpty { Text(contact.phone).font(.subheadline).textSelection(.enabled) }
@@ -190,15 +206,7 @@ struct PlacesView: View {
         List {
             ForEach((store.ledger.places ?? []).filter { query.isEmpty || ($0.customer + $0.address + $0.phone).localizedStandardContains(query) }) { place in
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .top) {
-                        Text(place.customer).font(.headline).fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 8)
-                        VStack(alignment: .trailing, spacing: 0) {
-                            Text(place.kind).font(.caption).foregroundStyle(.secondary)
-                            Button { editing = place } label: { Image(systemName: "pencil").frame(width: 44, height: 44) }
-                                .buttonStyle(.borderless).accessibilityLabel("Sửa " + place.customer)
-                        }
-                    }
+                    DirectoryHeading(title: place.customer, kind: place.kind) { editing = place }
                     Text(place.address).font(.subheadline)
                     if !place.phone.isEmpty { Text(place.phone).font(.subheadline).textSelection(.enabled) }
                     HStack {

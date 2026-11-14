@@ -143,6 +143,7 @@ struct OrderIntakeView: View {
     @State private var hasInvoiceDate = false
     @State private var invoiceDate = Date()
     @State private var askSigned = false
+    @State private var signatureOffered = false
     @State private var signed = false
     @State private var salesperson = ""
     @State private var signedAt = Date()
@@ -174,7 +175,11 @@ struct OrderIntakeView: View {
                     if hasInvoiceDate { DatePicker("Ngày hóa đơn", selection: $invoiceDate, displayedComponents: .date) }
                 }
                 Section("Ký nhận") {
-                    Label("Đã ký nhận phiếu", systemImage: "checkmark.seal.fill").foregroundStyle(SweepStyle.green).accessibilityIdentifier("intake.signed")
+                    if signed {
+                        Label("Đã ký nhận phiếu", systemImage: "checkmark.seal.fill").foregroundStyle(SweepStyle.green).accessibilityIdentifier("intake.signed")
+                    } else {
+                        Button("Xác nhận đơn đã ký chưa") { askSigned = true }.accessibilityIdentifier("intake.confirmSignature")
+                    }
                     if signed { DatePicker("Ngày ký nhận", selection: $signedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute]) }
                     LabeledContent("Công mỗi phiếu", value: VND.format(store.ledger.settings.fee))
                     Toggle("Đây là phiếu khác hợp lệ dù dùng lại ảnh", isOn: $allowRepeatedImage).font(.caption)
@@ -199,13 +204,17 @@ struct OrderIntakeView: View {
             .quickLookPreview($preview)
             .onAppear {
                 guard !initialized else { return }; initialized = true
-                if let at = shared?.signedAt { signed = true; signedAt = at } else { askSigned = true }
+                if let at = shared?.signedAt { signed = true; signedAt = at }
                 if let candidate {
                     customer = candidate.customer; total = String(candidate.total); code = candidate.code
                     phone = candidate.phone; address = candidate.address; deliveryNote = candidate.deliveryNote
                     if let date = candidate.invoiceDate { invoiceDate = date; hasInvoiceDate = true }
                 }
             }
+            .background(SweepAppearanceAction {
+                guard !signatureOffered else { return }; signatureOffered = true
+                if !signed, shared?.signedAt == nil { askSigned = true }
+            }.frame(width: 0, height: 0))
             .alert("Đơn này bạn đã ký chưa?", isPresented: $askSigned) {
                 Button("Đã ký") { signed = true }
                 Button("Bỏ qua", role: .cancel) { dismiss() }
@@ -215,6 +224,9 @@ struct OrderIntakeView: View {
             .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Xong") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }.accessibilityIdentifier("keyboard.done") } }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 6) {
+                    if !signed {
+                        Button("Xác nhận ký nhận phiếu") { askSigned = true }.buttonStyle(SweepCompactPill())
+                    }
                     Button(signed ? "Nhập đơn và ghi công ký nhận" : "Nhập đơn vào Sweep") { Task { await save() } }
                         .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).controlSize(.large)
                         .accessibilityIdentifier("intake.save").disabled(store.busy || reading || !signed || source == nil)
