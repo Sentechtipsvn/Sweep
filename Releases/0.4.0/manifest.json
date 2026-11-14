@@ -1,0 +1,11 @@
+{
+  "version": "0.4.0",
+  "build": "7",
+  "size": 1296709,
+  "sha256": "25b01fcd19cc66d84792e9a72d779a14a9526523eb2058477154f75cc92754ef",
+  "appBundleIdentifier": "com.sentechtipsvn.sweep",
+  "extensionBundleIdentifier": "com.sentechtipsvn.sweep.share",
+  "sourceCommit": "b1ad9da4c92c160d6dca7d32b8f12029222f60c3",
+  "validationWorkflow": "https://github.com/Sentechtipsvn/Sweep/actions/runs/43525588962",
+  "signing": "Ad-hoc App Group metadata; AltStore must re-sign the app and retained Share Extension."
+}

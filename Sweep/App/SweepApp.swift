@@ -4,26 +4,39 @@ import SwiftUI
 struct SweepApp: App {
     @StateObject private var library = PhotoStore()
     @StateObject private var delivery = DeliveryStore()
+    @StateObject private var router = SweepRouter()
+    @StateObject private var renewal = RenewalManager()
+    @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
-            TabView {
-                OrdersView().tabItem { Label("Đơn hàng", systemImage: "shippingbox") }
+            TabView(selection: $router.tab) {
+                OrdersView().tabItem { Label("Đơn hàng", systemImage: "shippingbox") }.tag(0)
                 NavigationStack { ReconciliationView() }
-                    .tabItem { Label("Đối soát", systemImage: "checklist") }
-                NavigationStack { HomeView() }
-                    .tabItem { Label("Công cụ", systemImage: "sparkles") }
-                NavigationStack { SettingsView() }
-                    .tabItem { Label("Cài đặt", systemImage: "gearshape") }
+                    .tabItem { Label("Lịch sử", systemImage: "clock.arrow.circlepath") }.tag(1)
+                NavigationStack(path: $router.tools) { HomeView().navigationDestination(for: String.self) { _ in PayrollView() } }
+                    .tabItem { Label("Công cụ", systemImage: "sparkles") }.tag(2)
+                NavigationStack(path: $router.settings) { SettingsView().navigationDestination(for: String.self) { _ in RenewalView() } }
+                    .tabItem { Label("Cài đặt", systemImage: "gearshape") }.tag(3)
             }
-            .tint(.green)
+            .tint(SweepStyle.blue)
             .environmentObject(library)
             .environmentObject(delivery)
+            .environmentObject(router)
+            .environmentObject(renewal)
+            .onOpenURL { router.open($0) }
+            .onReceive(NotificationCenter.default.publisher(for: .sweepInboxReceived)) { _ in router.tab = 0 }
+            .onReceive(NotificationCenter.default.publisher(for: .sweepRenewalSelected)) { _ in router.tab = 3; router.settings = ["renewal"] }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await renewal.refresh() } } }
             .background(DeliveryFeedback(store: delivery).frame(width: 0, height: 0))
             .task {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--seed-delivery") { delivery.installUITestFixture() }
+                if ProcessInfo.processInfo.arguments.contains("--qr-ui-testing") { delivery.installQRUITestFixture() }
+                if ProcessInfo.processInfo.arguments.contains("--monthly-ui-testing") { delivery.installMonthlyUITestFixture() }
+                if ProcessInfo.processInfo.arguments.contains("--update02-ui-testing") { delivery.installUpdate02UITestFixture() }
                 #endif
                 if library.canRead { library.reload() }
+                await renewal.refresh()
             }
         }
     }

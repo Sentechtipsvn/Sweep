@@ -50,7 +50,7 @@ xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Release \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 ```
 
-GitHub Actions **Build Sweep IPA** chạy kiểm thử core và build app arm64. Artifact chứa **IPA chưa ký**, cần ký/cài qua công cụ sideload. Chưa tự phát hành lên nguồn AltStore; chỉ thêm sau khi thử trên máy thật.
+GitHub Actions **Build Sweep IPA** chạy kiểm thử core và build app arm64. Bản Sweep 0.4.0 (7) đã có trong [nguồn AltStore chung với StikDebug VN](https://raw.githubusercontent.com/Sentechtipsvn/Stikdebug-VN/main/altstore/altstore.json). IPA giữ Share Extension và metadata App Groups; AltStore vẫn cần ký lại để cài trên iPhone.
 
 Kiểm thử mới bao gồm công theo ngày ký, chống lặp, tiền thực tế, đối soát CK, lịch sử bất biến, SQLite mở lại, nhập schema Bill, CSV, sao lưu/ảnh lỗi và điều hướng trên simulator. Các bài kiểm thử công cụ ảnh: nhóm trùng theo hash/byte, bỏ tài nguyên không hỗ trợ, gợi ý giữ ảnh yêu thích, ngăn xóa hết nhóm, không đếm lặp ID, đường dẫn/symlink thoát thư mục, ảnh nén đúng kích thước/chiều xoay/bỏ GPS/giữ đầu vào và từ chối tệp lỗi. Chúng không thay thế kiểm thử PhotoKit/quyền/xóa/iCloud trên iPhone.
 

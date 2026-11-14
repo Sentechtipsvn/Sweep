@@ -4,6 +4,29 @@ import UniformTypeIdentifiers
 import QuickLook
 import ImageIO
 
+private enum EvidenceThumbnails {
+    static let cache: NSCache<NSURL, UIImage> = {
+        let value = NSCache<NSURL, UIImage>(); value.countLimit = 80; value.totalCostLimit = 24 * 1024 * 1024; return value
+    }()
+}
+
+/// SwiftUI onAppear can run before a modal transition finishes. Offer alerts only once UIKit has appeared.
+struct SweepAppearanceAction: UIViewControllerRepresentable {
+    let action: () -> Void
+    func makeUIViewController(context: Context) -> Controller { Controller(action: action) }
+    func updateUIViewController(_ controller: Controller, context: Context) { controller.action = action }
+    final class Controller: UIViewController {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action; super.init(nibName: nil, bundle: nil) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func loadView() { view = UIView(); view.backgroundColor = .clear }
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            DispatchQueue.main.async { [weak self] in self?.action() }
+        }
+    }
+}
+
 struct EvidenceThumbnail: View {
     let url: URL
     var height: CGFloat = 160
@@ -16,13 +39,18 @@ struct EvidenceThumbnail: View {
         .frame(maxWidth: .infinity).frame(height: height)
         .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14))
         .task(id: url) {
+            let key = url.appendingPathExtension("thumb-\(Int(height))") as NSURL
+            if let cached = EvidenceThumbnails.cache.object(forKey: key) { image = cached; return }
             let pixels = max(160, min(1200, Int(height * 3)))
-            image = await Task.detached(priority: .utility) { Self.thumbnail(url, pixels: pixels) }.value
+            let result = await Task.detached(priority: .utility) { Self.thumbnail(url, pixels: pixels) }.value
+            guard !Task.isCancelled else { return }
+            if let result { EvidenceThumbnails.cache.setObject(result, forKey: key, cost: (result.cgImage?.bytesPerRow ?? 0) * (result.cgImage?.height ?? 0)) }
+            image = result
         }
     }
     nonisolated private static func thumbnail(_ url: URL, pixels: Int) -> UIImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+              let image = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: pixels] as CFDictionary) else { return nil }
         return UIImage(cgImage: image)
     }
@@ -33,38 +61,33 @@ struct EvidencePicker: View {
     let title: String
     let onChoose: (URL) async -> Void
     @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var selection: PhotosPickerItem?
-    @State private var filePicker = false
     @State private var camera = false
+    @State private var loading = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.subheadline.bold())
-            HStack {
-                PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .current) { Label("Ảnh", systemImage: "photo") }
-                Button { filePicker = true } label: { Label("Tệp", systemImage: "folder") }
-                if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                    Button { camera = true } label: { Label("Chụp", systemImage: "camera") }
-                }
-            }.buttonStyle(.bordered).disabled(store.busy)
+            VStack(alignment: .leading, spacing: 8) { photoButton; cameraButton }
+            if loading { ProgressView() }
         }
+        .buttonStyle(SweepCompactPill()).disabled(store.busy || loading)
         .onChange(of: selection) { _, item in
             guard let item else { return }
             Task {
+                loading = true; defer { loading = false; selection = nil }
                 do {
-                    guard let image = try await item.loadTransferable(type: ImportedImage.self) else { throw DeliveryError.invalid("Không đọc được ảnh.") }
-                    defer { withExtendedLifetime(image) {} }
-                    await onChoose(image.url)
-                } catch { store.message = error.localizedDescription }
-                selection = nil
-            }
-        }
-        .fileImporter(isPresented: $filePicker, allowedContentTypes: [.jpeg, .png, .heic]) { result in
-            Task {
-                do {
-                    let source = try result.get()
-                    let image = try await Task.detached { try ImportedImage.copy(from: source) }.value
-                    defer { withExtendedLifetime(image) {} }
-                    await onChoose(image.url)
+                    var ready: URL?
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        ready = try? await Task.detached { try IncomingInvoiceImage.copy(data: data) }.value
+                    }
+                    if ready == nil, let image = try await item.loadTransferable(type: ImportedImage.self) {
+                        ready = try await Task.detached { try IncomingInvoiceImage.copy(from: image.url) }.value
+                        withExtendedLifetime(image) {}
+                    }
+                    guard let ready else { throw DeliveryError.invalid("Chưa tải được ảnh. Mở ảnh trong thư viện rồi chọn lại.") }
+                    defer { try? FileManager.default.removeItem(at: ready) }
+                    await onChoose(ready)
                 } catch { store.message = error.localizedDescription }
             }
         }
@@ -73,15 +96,25 @@ struct EvidencePicker: View {
                 camera = false
                 guard let image else { return }
                 Task {
-                    let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
-                    defer { try? FileManager.default.removeItem(at: destination) }
+                    loading = true; defer { loading = false }
                     do {
-                        guard let data = image.jpegData(compressionQuality: 0.95) else { throw DeliveryError.invalid("Chưa đọc được ảnh vừa chụp.") }
-                        try data.write(to: destination, options: .atomic); await onChoose(destination)
+                        let ready = try SharedInvoiceLoader.copyImage(image)
+                        defer { try? FileManager.default.removeItem(at: ready) }
+                        await onChoose(ready)
                     } catch { store.message = error.localizedDescription }
                 }
             }.ignoresSafeArea()
         }
+    }
+    private var photoButton: some View {
+        PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .compatible) {
+            Label("Chọn ảnh", systemImage: "photo.on.rectangle")
+        }.accessibilityIdentifier("evidence.photos")
+    }
+    private var cameraButton: some View {
+        Button { camera = true } label: {
+            Label("Chụp ảnh", systemImage: "camera")
+        }.disabled(!UIImagePickerController.isSourceTypeAvailable(.camera)).accessibilityIdentifier("evidence.camera")
     }
 }
 

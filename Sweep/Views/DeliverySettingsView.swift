@@ -6,6 +6,9 @@ struct DeliverySettingsView: View {
     @State private var fee = ""
     @State private var company = ""
     @State private var account = ""
+    @State private var bankID = ""
+    @State private var accountNumber = ""
+    @State private var accountName = ""
     var body: some View {
         Form {
             Section("Công phiếu ký nhận") {
@@ -15,14 +18,25 @@ struct DeliverySettingsView: View {
             Section("Tài khoản nhận của công ty") {
                 TextField("Tên công ty", text: $company)
                 TextField("Ngân hàng · STK · Chủ tài khoản", text: $account, axis: .vertical).lineLimit(3...6)
-                Text("Nhập đúng tài khoản công ty trước khi đưa khách. Sweep dùng ảnh QR Sếp cung cấp.").font(.caption).foregroundStyle(.secondary)
+                Text("Thông tin ghi chú cũ và ảnh QR được giữ nguyên. QR tự điền số tiền dùng tài khoản VietQR bên dưới.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("VietQR theo từng đơn") {
+                TextField("Mã ngân hàng / BIN, ví dụ VCB hoặc 970436", text: $bankID).textInputAutocapitalization(.characters).autocorrectionDisabled().accessibilityIdentifier("settings.bankID")
+                TextField("Số tài khoản nhận tiền", text: $accountNumber).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("settings.accountNumber")
+                TextField("Tên chủ tài khoản", text: $accountName).textInputAutocapitalization(.characters).accessibilityIdentifier("settings.accountName")
+                Text("Lưu một lần, sau đó mở QR chuyển khoản trong từng đơn. Ưu tiên khoản còn lại; nếu đã ghi nhận đủ tiền, vẫn tạo lại được QR mà không đổi sổ.").font(.caption).foregroundStyle(.secondary)
+                Text("Khi tạo QR, ngân hàng, số tài khoản, tên chủ tài khoản, số tiền và nội dung mã phiếu được gửi tới VietQR.io. Ảnh phiếu không được gửi. Tên chủ tài khoản do Sếp nhập, không phải kết quả xác minh từ ngân hàng.").font(.caption).foregroundStyle(.secondary)
             }
             Button("Lưu cấu hình") {
                 do {
                     let amount = try VND.parse(fee)
+                    let fields = [bankID, accountNumber, accountName].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    let qrAccount: VietQRAccount? = fields.allSatisfy(\.isEmpty) ? nil : VietQRAccount(bankID: fields[0], accountNumber: fields[1], accountName: fields[2])
+                    try qrAccount?.validate()
                     if store.change({ ledger in
                         let old = ledger.settings
                         ledger.settings.fee = amount; ledger.settings.company = company; ledger.settings.account = account
+                        ledger.settings.vietQR = qrAccount
                         ledger.record("Cấu hình giao hàng", "Công \(old.fee) → \(amount); công ty \(old.company) → \(company); tài khoản \(old.account) → \(account)")
                     }) { store.message = "Đã lưu cấu hình. Phiếu đã ký giữ nguyên mức công." }
                 } catch { store.message = error.localizedDescription }
@@ -34,7 +48,10 @@ struct DeliverySettingsView: View {
             }
         }
         .navigationTitle("Cấu hình giao hàng").navigationBarTitleDisplayMode(.inline)
-        .onAppear { fee = String(store.ledger.settings.fee); company = store.ledger.settings.company; account = store.ledger.settings.account }
+        .onAppear {
+            fee = String(store.ledger.settings.fee); company = store.ledger.settings.company; account = store.ledger.settings.account
+            bankID = store.ledger.settings.vietQR?.bankID ?? ""; accountNumber = store.ledger.settings.vietQR?.accountNumber ?? ""; accountName = store.ledger.settings.vietQR?.accountName ?? ""
+        }
         .disabled(store.busy)
     }
 }
@@ -68,7 +85,7 @@ struct DeliveryBackupView: View {
                 Section("Bản giữ trước các lần khôi phục") {
                     ForEach(recoveries, id: \.self) { url in
                         Button { sharing = DeliveryShare(items: [url]) } label: {
-                            Label("Xuất bản trước khôi phục · \(url.lastPathComponent.dropFirst(15).prefix(8))", systemImage: "clock.arrow.circlepath")
+                            Label("Xuất bản lưu trước thay đổi · \(url.lastPathComponent.dropFirst(15).prefix(8))", systemImage: "clock.arrow.circlepath")
                         }
                     }
                 }
@@ -95,7 +112,7 @@ struct DeliveryBackupView: View {
             Button("Giữ sổ đang dùng", role: .cancel) {}
         } message: { Text("Sổ \(store.ledger.orders.count) hồ sơ hiện tại sẽ được thay bằng \(prepared?.ledger.orders.count ?? 0) hồ sơ của bản sao. Xuất bản hiện tại ra Tệp trước nếu Sếp cần giữ riêng.") }
         .onAppear {
-            recoveries = ((try? FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent.hasPrefix("Before-restore-") && $0.pathExtension == "sweepbackup" }
+            recoveries = ((try? FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent.hasPrefix("Before-") && $0.pathExtension == "sweepbackup" }
         }
     }
 }
