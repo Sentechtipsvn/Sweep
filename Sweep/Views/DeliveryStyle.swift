@@ -59,9 +59,10 @@ struct SweepOrderStatus: View {
 
 struct SweepDayPress: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
-            .opacity(configuration.isPressed ? 0.7 : 1)
+        configuration.label.scaleEffect(isEnabled && configuration.isPressed && !reduceMotion ? 0.94 : 1)
+            .opacity(!isEnabled ? 0.4 : configuration.isPressed ? 0.7 : 1)
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
