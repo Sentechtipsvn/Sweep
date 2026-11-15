@@ -28,36 +28,37 @@ struct DeliveryFlowView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                if store.busy { ProgressView("Đang xử lý chứng từ…").padding() }
                 if !problem.isEmpty { Text(problem).font(.callout).foregroundStyle(.red).padding().accessibilityIdentifier("flow.problem") }
                 if let order {
                     if stage == .qr {
                         VStack(spacing: 0) {
-                            OrderQRView(id: id, suggested: order.remaining)
+                            OrderQRView(id: id, suggested: order.remaining > 0 ? order.remaining : VietQR.suggestedAmount(for: order))
                             Button("Đã nhận chuyển khoản…") { bankAmount = String(order.remaining); confirmation = .bank }
                                 .buttonStyle(SweepPill(selected: true)).padding().background(.bar)
                                 .accessibilityIdentifier("flow.confirmTransfer")
                                 .disabled(order.remaining <= 0)
                         }
                     } else if stage == .proof {
-                        List {
-                            Section {
+                        SweepGroupedScroll {
+                            SweepCard {
                                 Text(order.customer).font(.headline)
                                 Text(order.shareText())
                             }
                             ForEach(order.requiredReportRoles, id: \.self) { role in
-                                Section(role.rawValue) {
+                                SweepCard(title: role.rawValue) {
                                     ForEach(order.activeEvidence.filter { $0.role == role }) { file in EvidenceThumbnail(url: store.url(file), height: 150) }
                                     EvidencePicker(title: role == .invoice ? "Phiếu có số tiền" : role.rawValue) { url in await store.attach(url, role: role, to: id) }
                                 }
                             }
-                            Section {
+                            SweepCard {
                                 NavigationLink { OrderReportView(id: id) } label: { Label("Kiểm tra và gửi nhóm", systemImage: "square.and.arrow.up") }
                                     .disabled(!order.missingEvidence().isEmpty).accessibilityIdentifier("flow.report")
                             }
                         }
                     } else {
-                        Form {
-                            Section {
+                        SweepGroupedScroll {
+                            SweepCard {
                                 Text(order.customer).font(.headline)
                                 LabeledContent("Tổng đơn", value: VND.format(order.total))
                                 if order.cash > 0 { LabeledContent("Tiền mặt đã ghi", value: VND.format(order.cash)) }
@@ -65,12 +66,12 @@ struct DeliveryFlowView: View {
                             }
                             if order.total <= 0 { Text("Kiểm tra tổng tiền trong Sửa đơn trước khi chốt.").foregroundStyle(.red) }
                             if method == .cash {
-                                Section {
-                                    Button("Thu đủ tiền mặt") { confirmation = .cash }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.cashFull")
-                                    Button("Thu một phần") { partial = String(order.cash); stage = .partial }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.partial")
-                                }.disabled(order.bank > 0 || order.total <= 0)
+                                SweepCard {
+                                    Button("Thu đủ tiền mặt") { if canStartCash(order) { confirmation = .cash } }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.cashFull")
+                                    Button("Thu một phần") { if canStartCash(order) { partial = String(order.cash); stage = .partial } }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.partial")
+                                }
                                 if stage == .partial {
-                                    Section("Tiền mặt thực nhận") {
+                                    SweepCard(title: "Tiền mặt thực nhận") {
                                         MoneyInput(title: "Đã nhận", text: $partial, identifier: "flow.cash")
                                         if let c = try? VND.parse(partial), c <= order.total { LabeledContent("Còn lại", value: VND.format(order.total-c)) }
                                         Button("Phần còn lại chuyển khoản ngay") { confirmation = .partialNow }.accessibilityIdentifier("flow.partialNow")
@@ -78,18 +79,18 @@ struct DeliveryFlowView: View {
                                     }
                                 }
                             } else if method == .bank {
-                                Section {
-                                    Button("Chuyển khoản ngay") { stage = .qr }.buttonStyle(SweepPill(selected: true)).disabled(order.remaining <= 0).accessibilityIdentifier("flow.bankNow")
-                                    Button("Chuyển khoản sau…") { confirmation = .later }.buttonStyle(SweepPill()).disabled(order.bank > 0 || order.remaining <= 0).accessibilityIdentifier("flow.bankLater")
+                                SweepCard {
+                                    Button(order.remaining > 0 ? "Chuyển khoản ngay" : "Xem lại QR chuyển khoản") { stage = .qr }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.bankNow")
+                                    Button("Chuyển khoản sau…") { requestLater(order) }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.bankLater")
                                     if order.bank > 0 { Button("Tiếp tục gửi chứng từ") { stage = .proof }.buttonStyle(SweepPill()) }
                                 }
                             } else {
-                                Section {
+                                SweepCard {
                                     Text("Gửi phiếu nhà xe đã ký và ảnh hàng đã gửi. Bán hàng theo dõi tiền.").font(.subheadline)
-                                    Button("Đã giao hàng cho chành…") { confirmation = .freight }.buttonStyle(SweepPill(selected: true)).disabled(order.cash > 0 || order.bank > 0).accessibilityIdentifier("flow.freight")
+                                    Button("Đã giao hàng cho chành…") { requestFreight(order) }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.freight")
                                 }
                             }
-                            Section { Button("Huỷ", role: .cancel) { dismiss() } }
+                            SweepCard { Button("Huỷ", role: .cancel) { dismiss() } }
                         }
                     }
                 }
@@ -104,7 +105,6 @@ struct DeliveryFlowView: View {
                         .accessibilityIdentifier("keyboard.done")
                 }
             }
-            .disabled(store.busy || store.blocked)
             .alert(confirmation?.title ?? "", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), presenting: confirmation) { value in
                 switch value {
                 case .cash:
@@ -137,6 +137,33 @@ struct DeliveryFlowView: View {
                 }
             }
         }
+    }
+    private func canStartCash(_ order: DeliveryOrder) -> Bool {
+        guard canWrite() else { return false }
+        guard order.total > 0 else { problem = "Kiểm tra tổng tiền trong Sửa đơn trước khi chốt."; return false }
+        guard order.bank == 0 else {
+            problem = "Đơn đã ghi nhận chuyển khoản. Dùng Điều chỉnh giao / tiền để sửa khoản đã lưu."; return false
+        }
+        problem = ""; return true
+    }
+    private func requestLater(_ order: DeliveryOrder) {
+        guard canWrite() else { return }
+        guard order.bank == 0, order.remaining > 0 else {
+            problem = "Đơn đã ghi nhận tiền chuyển hoặc đã thu đủ. Dùng Điều chỉnh giao / tiền nếu cần sửa; khoản đã lưu được giữ nguyên."; return
+        }
+        problem = ""; confirmation = .later
+    }
+    private func requestFreight(_ order: DeliveryOrder) {
+        guard canWrite() else { return }
+        guard order.cash == 0, order.bank == 0 else {
+            problem = "Đơn đã ghi nhận tiền khách trả. Kiểm tra Điều chỉnh giao / tiền trước khi chuyển sang giao chành; khoản đã lưu được giữ nguyên."; return
+        }
+        problem = ""; confirmation = .freight
+    }
+    private func canWrite() -> Bool {
+        if store.blocked { problem = store.storageIssue ?? "Sổ đang ở chế độ chỉ đọc. Kiểm tra lỗi mở sổ trước khi ghi thay đổi."; return false }
+        if store.busy { problem = "Đang xử lý chứng từ. Chờ hoàn tất rồi ghi nhận giao hàng."; return false }
+        return true
     }
     private func save(cash: Int64, bank: Int64, route: DeliveryRoute) -> Bool {
         let mode: PaymentMode = cash > 0 && bank > 0 ? .mixed : bank > 0 ? .bank : cash > 0 ? .cash : .deferred

@@ -71,7 +71,7 @@ struct EvidencePicker: View {
             HStack(alignment: .top, spacing: 10) { photoButton; cameraButton }
             if loading { ProgressView() }
         }
-        .buttonStyle(SweepCompactPill(expanded: true)).disabled(store.busy || loading)
+        .buttonStyle(SweepCompactPill(expanded: true)).disabled(store.busy || store.blocked || loading)
         .onChange(of: selection) { _, item in
             guard let item else { return }
             Task {
@@ -162,7 +162,7 @@ struct MoneyInput: View {
             TextField("0", text: $text).keyboardType(.numberPad).multilineTextAlignment(.trailing)
                 .accessibilityIdentifier(identifier).monospacedDigit()
             Text("₫").foregroundStyle(.secondary)
-        }
+        }.frame(minHeight: 44)
     }
 }
 

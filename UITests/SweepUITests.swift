@@ -1,6 +1,137 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    func testProductionReadOnlyActionsGiveFeedbackAndStillClose() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN"]
+        app.launch()
+        if app.alerts.buttons["Đã hiểu"].waitForExistence(timeout: 8) { app.alerts.buttons["Đã hiểu"].tap() }
+        let bank = app.buttons["order.REPLAY-BANK"]
+        XCTAssertTrue(bank.waitForExistence(timeout: 20)); bank.tap()
+        XCTAssertTrue(app.staticTexts["Sổ đang ở chế độ chỉ đọc"].waitForExistence(timeout: 10))
+        reveal(app.buttons["method.Chuyển khoản"], in: app); tapPillBackground(app.buttons["method.Chuyển khoản"])
+        XCTAssertTrue(app.buttons["flow.bankLater"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.bankLater"])
+        XCTAssertTrue(app.staticTexts["flow.problem"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars.buttons["Đóng"].isEnabled); app.navigationBars.buttons["Đóng"].tap()
+        app.tabBars.buttons["Công cụ"].tap(); app.buttons["tool.payroll"].tap()
+        XCTAssertTrue(app.scrollViews["payroll.content"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.scrollViews["payroll.content"].collectionViews.count, 0)
+        attach(app, name: "production-read-only-feedback-and-attendance")
+    }
+
+    func testAttendanceLargeTextNavigationUsesPlainScroll() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL", "--delivery-ui-testing", "--reset-delivery"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Công cụ"].waitForExistence(timeout: 20)); app.tabBars.buttons["Công cụ"].tap()
+        for _ in 0..<3 {
+            let tool = app.buttons["tool.payroll"]
+            reveal(tool, in: app); XCTAssertTrue(tool.isHittable); tool.tap()
+            let content = app.scrollViews["payroll.content"]
+            XCTAssertTrue(content.waitForExistence(timeout: 10)); XCTAssertEqual(content.collectionViews.count, 0)
+            app.navigationBars.buttons["Công cụ"].tap()
+        }
+        let tool = app.buttons["tool.payroll"]; reveal(tool, in: app); tool.tap()
+        XCTAssertTrue(app.scrollViews["payroll.content"].waitForExistence(timeout: 10))
+        attach(app, name: "attendance-large-text-without-collection-row-layout")
+    }
+
+    func testProductionReleaseDeliveryBranches() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN"]
+        app.launch()
+        let bank = app.buttons["order.REPLAY-BANK"]
+        XCTAssertTrue(bank.waitForExistence(timeout: 20)); bank.tap()
+        reveal(app.buttons["method.Chuyển khoản"], in: app); tapPillBackground(app.buttons["method.Chuyển khoản"])
+        XCTAssertTrue(app.buttons["flow.bankNow"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.bankNow"])
+        XCTAssertTrue(app.buttons["flow.confirmTransfer"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons["Đóng"].tap()
+        XCTAssertTrue(app.buttons["method.Chuyển khoản"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["method.Chuyển khoản"])
+        XCTAssertTrue(app.buttons["flow.bankLater"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.bankLater"])
+        XCTAssertTrue(app.alerts.buttons["Xác nhận, chọn phiếu đã ký"].waitForExistence(timeout: 10)); app.alerts.buttons["Xác nhận, chọn phiếu đã ký"].tap()
+        XCTAssertTrue(app.navigationBars["Chứng từ giao hàng"].waitForExistence(timeout: 10))
+        attach(app, name: "production-release-transfer-now-and-later")
+        app.navigationBars.buttons["Đóng"].tap()
+        app.navigationBars["Chi tiết đơn"].buttons.element(boundBy: 0).tap()
+
+        let partial = app.buttons["order.REPLAY-PARTIAL"]
+        XCTAssertTrue(partial.waitForExistence(timeout: 10)); partial.tap()
+        reveal(app.buttons["method.Tiền mặt"], in: app); tapPillBackground(app.buttons["method.Tiền mặt"])
+        XCTAssertTrue(app.buttons["flow.partial"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.partial"])
+        let amount = app.textFields["flow.cash"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        amount.coordinate(withNormalizedOffset: CGVector(dx: 0.995, dy: 0.5)).tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "600000")
+        XCTAssertEqual(amount.value as? String, "600000"); dismissKeyboard(in: app)
+        reveal(app.buttons["flow.partialNow"], in: app); app.buttons["flow.partialNow"].tap()
+        XCTAssertTrue(app.alerts.buttons["Đã nhận, mở QR phần còn lại"].waitForExistence(timeout: 10)); app.alerts.buttons["Đã nhận, mở QR phần còn lại"].tap()
+        XCTAssertTrue(app.buttons["flow.confirmTransfer"].waitForExistence(timeout: 10))
+        attach(app, name: "production-release-partial-cash-remaining-transfer")
+        app.navigationBars.buttons["Đóng"].tap()
+        app.navigationBars["Chi tiết đơn"].buttons.element(boundBy: 0).tap()
+
+        let freight = app.buttons["order.REPLAY-FREIGHT"]
+        XCTAssertTrue(freight.waitForExistence(timeout: 10)); freight.tap()
+        reveal(app.buttons["method.Giao chành"], in: app); tapPillBackground(app.buttons["method.Giao chành"])
+        XCTAssertTrue(app.buttons["flow.freight"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.freight"])
+        XCTAssertTrue(app.alerts.buttons["Đã giao, thêm chứng từ"].waitForExistence(timeout: 10)); app.alerts.buttons["Đã giao, thêm chứng từ"].tap()
+        XCTAssertTrue(app.navigationBars["Chứng từ giao hàng"].waitForExistence(timeout: 10))
+        attach(app, name: "production-release-freight")
+        app.navigationBars.buttons["Đóng"].tap()
+        app.tabBars.buttons["Lịch sử"].tap()
+        assertRow("audit.cashCollected", contains: "600.000₫", in: app)
+        assertRow("audit.fee", contains: "15.000₫", in: app)
+    }
+
+    func testProductionReleaseAttendanceNavigationAndRotation() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Công cụ"].waitForExistence(timeout: 20)); app.tabBars.buttons["Công cụ"].tap()
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for iteration in 0..<4 {
+            let tool = app.buttons["tool.payroll"]
+            reveal(tool, in: app); XCTAssertTrue(tool.waitForExistence(timeout: 10)); tool.tap()
+            let content = app.scrollViews["payroll.content"]
+            XCTAssertTrue(content.waitForExistence(timeout: 10))
+            // The device crash recursed in UICollectionView's visible-cell layout.
+            XCTAssertEqual(content.collectionViews.count, 0)
+            if iteration == 1 { XCUIDevice.shared.orientation = .landscapeLeft }
+            if iteration == 2 { XCUIDevice.shared.orientation = .portrait }
+            app.navigationBars.buttons["Công cụ"].tap()
+        }
+        app.buttons["tool.payroll"].tap()
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+        let today = app.buttons["attendance.day.\(calendar.component(.day, from: Date()))"]
+        reveal(today, in: app); XCTAssertTrue(today.waitForExistence(timeout: 10)); today.tap()
+        XCTAssertTrue(app.buttons["attendance.save"].waitForExistence(timeout: 10)); app.buttons["attendance.save"].tap()
+        XCTAssertTrue(app.scrollViews["payroll.content"].waitForExistence(timeout: 10))
+        attach(app, name: "production-release-attendance-rotation-and-save")
+    }
+
+    func testPaidOrderActionsExplainGuardAndCanReopenQR() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--qr-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["order.TEST-001"].waitForExistence(timeout: 20)); app.buttons["order.TEST-001"].tap()
+        reveal(app.buttons["method.Chuyển khoản"], in: app); tapPillBackground(app.buttons["method.Chuyển khoản"])
+        XCTAssertTrue(app.buttons["flow.bankLater"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.bankLater"])
+        XCTAssertTrue(app.staticTexts["flow.problem"].waitForExistence(timeout: 10))
+        tapPillBackground(app.buttons["flow.bankNow"])
+        XCTAssertTrue(app.textFields["qr.amount"].waitForExistence(timeout: 10)); XCTAssertEqual(app.textFields["qr.amount"].value as? String, "2165000")
+        app.navigationBars.buttons["Đóng"].tap()
+        reveal(app.buttons["method.Giao chành"], in: app); tapPillBackground(app.buttons["method.Giao chành"])
+        XCTAssertTrue(app.buttons["flow.freight"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.freight"])
+        XCTAssertTrue(app.staticTexts["flow.problem"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.alerts["Đã bàn giao hàng cho chành?"].exists)
+        attach(app, name: "paid-order-guards-explain-why-and-preserve-money")
+    }
+
     func testHotfixUnsignedBankOpensAfterSigningAndQRDoesNotRecordPayment() throws {
         let app = openUnsignedDeliveryFlow("Chuyển khoản", expected: "flow.bankNow")
         tapPillBackground(app.buttons["flow.bankNow"])
@@ -388,7 +519,10 @@ final class SweepUITests: XCTestCase {
             if element.exists && element.isHittable { return }
             let collection = app.collectionViews.allElementsBoundByIndex.last { $0.isHittable }
             let table = app.tables.allElementsBoundByIndex.last { $0.isHittable }
-            let scroll = collection ?? table ?? app.scrollViews.allElementsBoundByIndex.last { $0.isHittable }
+            let tagged = ["sweep.groupedScroll", "order.content", "payroll.content"].flatMap { id in
+                app.scrollViews.matching(identifier: id).allElementsBoundByIndex
+            }.last { $0.isHittable }
+            let scroll = tagged ?? collection ?? table ?? app.scrollViews.allElementsBoundByIndex.last { $0.isHittable }
             if let scroll { scroll.swipeUp() } else { app.swipeUp() }
         }
     }

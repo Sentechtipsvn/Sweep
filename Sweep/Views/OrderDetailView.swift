@@ -22,8 +22,15 @@ struct OrderDetailView: View {
         Group {
             if let order {
                 VStack(spacing: 0) {
-                    List {
-                        Section {
+                    if store.busy { ProgressView("Đang xử lý chứng từ…").padding() }
+                    SweepGroupedScroll {
+                        if store.blocked {
+                            SweepCard {
+                                Label("Sổ đang ở chế độ chỉ đọc", systemImage: "lock.fill").foregroundStyle(.orange)
+                                Button("Xem lỗi mở sổ") { store.message = store.storageIssue }
+                            }
+                        }
+                        SweepCard {
                             if let invoice = order.activeEvidence.first(where: { $0.role == .invoice }) {
                                 Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 230) }.buttonStyle(.plain)
                                     .overlay(alignment: .topTrailing) {
@@ -36,7 +43,7 @@ struct OrderDetailView: View {
                                                 NavigationLink("Chọn liên hệ bán hàng") { ContactsView(seller: order.salesperson ?? "") }
                                                 NavigationLink("Thêm liên hệ bán hàng") { ContactEditor(initialName: order.salesperson ?? "", role: "Bán hàng") }
                                             }
-                                        } label: { Image(systemName: "ellipsis.circle.fill").font(.title).symbolRenderingMode(.palette).foregroundStyle(.blue, .white).padding(8) }.accessibilityLabel("Liên hệ bán hàng")
+                                        } label: { Image(systemName: "ellipsis.circle.fill").font(.title).symbolRenderingMode(.palette).foregroundStyle(.blue, .white).padding(8) }.buttonStyle(.borderless).accessibilityLabel("Liên hệ bán hàng")
                                     }
                             }
                             HStack { Text(order.customer).font(.title3.bold()); Spacer(); Text(VND.format(order.total)).font(.headline).monospacedDigit() }
@@ -49,7 +56,7 @@ struct OrderDetailView: View {
                             NavigationLink { OrderQRView(id: id) } label: { Label("QR chuyển khoản", systemImage: "qrcode") }.accessibilityIdentifier("order.qr")
                         }
                         if order.voidReason == nil {
-                            Section {
+                            SweepCard {
                                 ForEach([DeliveryMethod.cash, .bank, .freight]) { item in
                                     Button(item.rawValue) { beginDelivery(item) }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("method.\(item.id)")
                                 }
@@ -59,7 +66,7 @@ struct OrderDetailView: View {
                                 }
                             }
                         }
-                        Section("Ký nhận và công đơn") {
+                        SweepCard(title: "Ký nhận và công đơn") {
                             if let assignment = order.assignments.first {
                                 LabeledContent(order.activeAssignments.isEmpty ? "Đã điều chỉnh hủy công" : "Công đã ghi nhận", value: VND.format(assignment.fee))
                                 LabeledContent("Ngày Sếp ký nhận", value: assignment.signedAt.formatted(date: .numeric, time: .shortened))
@@ -68,7 +75,7 @@ struct OrderDetailView: View {
                                 Button("Xác nhận Sếp đã ký nhận phiếu") { sign = true }.accessibilityIdentifier("order.sign")
                             }
                         }
-                        Section("Giao và tiền") {
+                        SweepCard(title: "Giao và tiền") {
                             LabeledContent("Kết quả", value: order.outcome.rawValue)
                             LabeledContent("Tiền mặt đã thu", value: VND.format(order.cash))
                             LabeledContent("CK khách báo", value: VND.format(order.bank))
@@ -81,7 +88,7 @@ struct OrderDetailView: View {
 
                         }
                         ForEach([EvidenceRole.invoice, .signature, .transfer, .freightSignature, .goods].filter { role in role == .invoice || order.allowedReportRoles.contains(role) || order.activeEvidence.contains(where: { $0.role == role }) }, id: \.self) { role in
-                            Section(role.rawValue) {
+                            SweepCard(title: role.rawValue) {
                                 let files = order.activeEvidence.filter { $0.role == role }
                                 if !files.isEmpty {
                                     ScrollView(.horizontal) {
@@ -98,14 +105,14 @@ struct OrderDetailView: View {
                                 if order.voidReason == nil { EvidencePicker(title: "Bổ sung \(role.rawValue.lowercased())") { url in await store.attach(url, role: role, to: id) } }
                             }
                         }
-                        if order.requiresReport { Section("Chia sẻ") {
+                        if order.requiresReport { SweepCard(title: "Chia sẻ") {
                             Label(order.reportSent ? "Đã gửi" : "Chưa gửi", systemImage: order.reportSent ? "checkmark.circle.fill" : "paperplane")
                                 .foregroundStyle(order.reportSent ? .green : .secondary)
                             NavigationLink { OrderReportView(id: id) } label: { Label("Chia sẻ đơn", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("order.report")
                         }
                         }
                         if !order.reviewNote.isEmpty {
-                            Section("Dữ liệu cũ cần rà soát") {
+                            SweepCard(title: "Dữ liệu cũ cần rà soát") {
                                 Text(order.reviewNote).font(.footnote).textSelection(.enabled)
                                 Button("Đánh dấu đã rà soát dữ liệu cũ") {
                                     _ = store.change { ledger in
@@ -117,8 +124,8 @@ struct OrderDetailView: View {
                                 }
                             }
                         }
-                        if !order.deliveryNoteForDisplay.isEmpty { Section("Ghi chú giao hàng") { Text(order.deliveryNoteForDisplay) } }
-                        Section {
+                        if !order.deliveryNoteForDisplay.isEmpty { SweepCard(title: "Ghi chú giao hàng") { Text(order.deliveryNoteForDisplay) } }
+                        SweepCard {
                             if !order.exclusions.isEmpty {
                                 NavigationLink("Ảnh gốc đã loại khỏi báo cáo (\(order.exclusions.count))") {
                                     List(order.evidence.filter { file in order.exclusions.contains { $0.evidenceID == file.id } }) { file in
@@ -136,7 +143,7 @@ struct OrderDetailView: View {
                             if order.voidReason == nil { Button("Hủy hồ sơ nhập nhầm…", role: .destructive) { reason = ""; void = true } }
                             else { Text("Đã hủy: \(order.voidReason ?? "")").foregroundStyle(.secondary) }
                         }
-                    }
+                    }.accessibilityIdentifier("order.content")
                 }
                 .sheet(isPresented: $saveLocation) { NavigationStack { PlaceEditor(order: order) } }
                 .onAppear { promptForLocation() }
@@ -164,13 +171,13 @@ struct OrderDetailView: View {
         .sheet(isPresented: $sign, onDismiss: resumeDeliveryAfterSigning) { SignAssignmentView(id: id) }
         .toolbar { if order?.voidReason == nil { Button("Sửa") { edit = true } } }
         .quickLookPreview($preview)
-        .disabled(store.busy)
     }
     private func promptForLocation() {
         guard method == nil, !sign, let order, order.taskComplete, order.locationPromptedAt == nil, !store.ledger.hasPlace(for: order) else { return }
         locationPrompt = true
     }
     private func beginDelivery(_ selected: DeliveryMethod) {
+        guard !store.busy else { store.message = "Đang xử lý chứng từ. Chờ hoàn tất rồi chọn cách giao."; return }
         guard let order else { return }
         if !order.activeAssignments.isEmpty { method = selected; return }
         guard order.assignments.isEmpty else {

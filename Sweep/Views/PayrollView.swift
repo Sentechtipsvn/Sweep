@@ -37,7 +37,7 @@ struct PayrollView: View {
     @State private var sharing: DeliveryShare?
     var body: some View {
         let data = PayrollScreenData(ledger: store.ledger, month: month)
-        PayrollContent(data: data, canEdit: !store.busy && !store.blocked,
+        PayrollContent(data: data, canEdit: !store.busy && !store.blocked, storageIssue: store.blocked ? store.storageIssue : nil,
                        selectDay: { day = AttendanceDay(date: $0) }, move: move,
                        configure: { configure = true }, advance: { advance = true },
                        close: { confirmation = .close }, reopen: { reason = ""; confirmation = .reopen },
@@ -100,6 +100,7 @@ struct PayrollView: View {
 private struct PayrollContent: View {
     let data: PayrollScreenData
     let canEdit: Bool
+    let storageIssue: String?
     let selectDay: (Date) -> Void
     let move: (Int) -> Void
     let configure: () -> Void
@@ -108,15 +109,21 @@ private struct PayrollContent: View {
     let reopen: () -> Void
     let export: () -> Void
     var body: some View {
-        List {
+        SweepGroupedScroll {
+            if let storageIssue {
+                SweepCard {
+                    Label("Sổ đang ở chế độ chỉ đọc", systemImage: "lock.fill").foregroundStyle(.orange)
+                    Text(storageIssue).font(.footnote)
+                }
+            }
             PayrollSummarySection(data: data, move: move)
-            Section("Chấm công") {
+            SweepCard(title: "Chấm công") {
                 PayrollCalendar(period: data.period, signedDays: data.signedDays, canEdit: canEdit && data.closed == nil, select: selectDay)
             }
             PayrollLeaveSection(data: data)
             PayrollSalarySection(data: data)
             PayrollAdvancesSection(period: data.period, canEdit: canEdit && data.closed == nil, add: advance)
-            Section {
+            SweepCard {
                 if data.closed == nil {
                     Button("Cấu hình lương và giá xăng", systemImage: "slider.horizontal.3", action: configure).disabled(!canEdit).accessibilityIdentifier("payroll.configure")
                     Button("Chốt bảng lương tháng", systemImage: "lock", action: close).disabled(!canEdit).accessibilityIdentifier("payroll.close")
@@ -125,17 +132,17 @@ private struct PayrollContent: View {
                 }
                 Button("Xuất bảng lương CSV", systemImage: "square.and.arrow.up", action: export)
             }
-            Section {
+            SweepCard {
                 Text("Chấm công thủ công; đơn đã ký chỉ gợi ý ngày đi làm. Tiền thu hộ không cộng vào lương. Mức tiền và lịch làm việc áp dụng theo cấu hình tháng.").font(.footnote).foregroundStyle(.secondary)
             }
-        }
+        }.accessibilityIdentifier("payroll.content")
     }
 }
 private struct PayrollSummarySection: View {
     let data: PayrollScreenData
     let move: (Int) -> Void
     var body: some View {
-        Section {
+        SweepCard {
             HStack {
                 Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
                     .buttonStyle(.borderless).accessibilityLabel("Tháng trước").accessibilityIdentifier("payroll.previous")
@@ -169,7 +176,7 @@ private struct PayrollLeaveSection: View {
     var body: some View {
         let used = data.book.annualLeaveUnits(year: data.year)
         let remaining = 24 - used
-        Section("Phép năm " + String(data.year)) {
+        SweepCard(title: "Phép năm " + String(data.year)) {
             LabeledContent("Đã nghỉ / hạn mức", value: "\(payrollUnits(used)) / 12 ngày")
             Text(remaining < 0 ? "Vượt \(payrollUnits(-remaining)) ngày. Vẫn giữ toàn bộ ngày nghỉ để đối chiếu." : "Còn \(payrollUnits(remaining)) ngày phép không lương.")
                 .font(.footnote).foregroundStyle(remaining < 0 ? Color.red : Color.secondary)
@@ -180,7 +187,7 @@ private struct PayrollLeaveSection: View {
 private struct PayrollSalarySection: View {
     let data: PayrollScreenData
     var body: some View {
-        Section("Các khoản tháng này") {
+        SweepCard(title: "Các khoản tháng này") {
             ForEach(data.result.rows, id: \.0) { label, value in
                 LabeledContent(label, value: !data.period.policy.confirmed ? "Chưa cấu hình" : label == "Xăng xe" && !data.result.fuelConfirmed ? "Chờ chốt giá" : VND.format(value))
             }
@@ -200,7 +207,7 @@ private struct PayrollAdvancesSection: View {
     let canEdit: Bool
     let add: () -> Void
     var body: some View {
-        Section("Tạm ứng") {
+        SweepCard(title: "Tạm ứng") {
             ForEach(period.advances) { item in
                 VStack(alignment: .leading) {
                     LabeledContent(item.day.formatted(date: .numeric, time: .omitted), value: VND.format(item.amount))
@@ -220,14 +227,25 @@ private struct PayrollCalendar: View {
         let days = PayrollDates.days(period.month)
         if let first = days.first {
             let offset = (PayrollDates.calendar.component(.weekday, from: first) + 5) % 7
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
-                ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) { Text($0).font(.caption2).foregroundStyle(.secondary) }
-                ForEach(0..<(offset + days.count), id: \.self) { index in
-                    if index < offset { Color.clear.frame(height: 48) }
-                    else {
-                        let date = days[index - offset]
-                        AttendanceDayButton(date: date, state: period.entry(date)?.state, suggested: signedDays.contains(date),
-                                            enabled: canEdit && date <= PayrollDates.calendar.startOfDay(for: Date())) { select(date) }
+            let rowCount = (offset + days.count + 6) / 7
+            VStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) { title in
+                        Text(title).font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                    }
+                }
+                ForEach(0..<rowCount, id: \.self) { row in
+                    HStack(spacing: 4) {
+                        ForEach(0..<7, id: \.self) { column in
+                            let index = row * 7 + column - offset
+                            if days.indices.contains(index) {
+                                let date = days[index]
+                                AttendanceDayButton(date: date, state: period.entry(date)?.state, suggested: signedDays.contains(date),
+                                                    enabled: canEdit && date <= PayrollDates.calendar.startOfDay(for: Date())) { select(date) }
+                            } else {
+                                Color.clear.frame(maxWidth: .infinity, minHeight: 48).accessibilityHidden(true)
+                            }
+                        }
                     }
                 }
             }.padding(.vertical, 8)
@@ -272,10 +290,10 @@ private struct AttendanceEditor: View {
     @State private var state = AttendanceState.work
     @State private var note = ""
     var body: some View {
-        Form {
-            Section {
+        SweepGroupedScroll {
+            SweepCard {
                 Text(day.formatted(date: .complete, time: .omitted))
-                Picker("Trạng thái", selection: $state) { ForEach(AttendanceState.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                Picker("Trạng thái", selection: $state) { ForEach(AttendanceState.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu)
                 TextField("Ghi chú", text: $note)
                 if suggested { Text("Ngày này có đơn đã ký. Sếp xác nhận công thực tế.").font(.footnote).foregroundStyle(.secondary) }
                 Text("Nửa công tính 0,5 công và 0,5 ngày phép không lương; trợ cấp ngày hưởng một nửa.").font(.footnote).foregroundStyle(.secondary)
@@ -307,8 +325,8 @@ private struct PayrollConfigurationView: View {
     @State private var error = ""
     @State private var initialized = false
     var body: some View {
-        Form {
-            Section("Lịch làm việc chuẩn") {
+        SweepGroupedScroll {
+            SweepCard(title: "Lịch làm việc chuẩn") {
                 ForEach(1...7, id: \.self) { weekday in
                     Toggle(weekday == 1 ? "Chủ nhật" : "Thứ \(weekday)", isOn: Binding(get: { period.policy.weekdays.contains(weekday) }, set: { yes in
                         period.policy.weekdays.removeAll { $0 == weekday }; if yes { period.policy.weekdays.append(weekday) }
@@ -316,7 +334,7 @@ private struct PayrollConfigurationView: View {
                 }
                 Text("Ngày nghỉ theo lịch có thể chỉnh trên lịch chấm công; không trừ phép năm.").font(.footnote).foregroundStyle(.secondary)
             }
-            Section("Mức tháng và trợ cấp ngày") {
+            SweepCard(title: "Mức tháng và trợ cấp ngày") {
                 MoneyInput(title: "Lương cơ bản tháng", text: $base)
                 MoneyInput(title: "Điện thoại tháng", text: $phone)
                 MoneyInput(title: "Ăn / ngày", text: $meal)
@@ -327,7 +345,7 @@ private struct PayrollConfigurationView: View {
                 Text("Lương cơ bản và điện thoại phân bổ theo công thực làm / công chuẩn. Nghỉ quá 3 ngày mất chuyên cần; bảo hiểm giữ mức tháng đã nhập.").font(.footnote).foregroundStyle(.secondary)
                 Toggle("Đã kiểm tra lịch và mức tiền", isOn: $period.policy.confirmed)
             }
-            Section("Giá xăng chốt của tháng") {
+            SweepCard(title: "Giá xăng chốt của tháng") {
                 TextField("Loại xăng công ty dùng", text: $period.policy.fuelType)
                 TextField("Vùng giá", text: $period.policy.fuelRegion)
                 Text("Ngày giá áp dụng: " + PayrollDates.fuelDay(period.month).formatted(date: .numeric, time: .omitted))
@@ -336,7 +354,7 @@ private struct PayrollConfigurationView: View {
                 Link("Đối chiếu Petrolimex", destination: URL(string: "https://www.petrolimex.com.vn/")!)
                 Text("Nhập đúng giá có hiệu lực ngày chốt, không lấy giá hôm nay thay tháng cũ. Tự động lấy giá chưa được bật.").font(.footnote).foregroundStyle(.secondary)
             }
-            Section("Phép năm và điều chỉnh") {
+            SweepCard(title: "Phép năm và điều chỉnh") {
                 TextField("Phép đã dùng trước dữ liệu công trong Sweep", text: $leave).keyboardType(.decimalPad)
                 Text("Số ngày nghỉ không lương đã dùng trong năm ngoài các ngày đã chấm trong Sweep. Hạn mức 12 ngày.").font(.footnote).foregroundStyle(.secondary)
                 TextField("Điều chỉnh lương, số âm để trừ", text: $adjustment).keyboardType(.numbersAndPunctuation)
@@ -383,7 +401,7 @@ private struct SalaryAdvanceEditor: View {
     @State private var day = Date()
     @State private var error = ""
     var body: some View {
-        Form {
+        SweepGroupedScroll {
             DatePicker("Ngày tạm ứng", selection: $day, displayedComponents: .date)
             MoneyInput(title: "Số tiền đã ứng", text: $amount)
             TextField("Ghi chú", text: $note)

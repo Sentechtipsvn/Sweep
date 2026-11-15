@@ -5,6 +5,7 @@ final class DeliveryStore: ObservableObject {
     @Published private(set) var ledger = DeliveryLedger()
     @Published private(set) var busy = false
     @Published private(set) var blocked = false
+    @Published private(set) var storageIssue: String?
     @Published var message: String?
     let root: URL
     let evidenceDirectory: URL
@@ -45,7 +46,11 @@ final class DeliveryStore: ObservableObject {
             for name in ["Backups", "Exports"] {
                 try FileManager.default.createDirectory(at: documents.appendingPathComponent(name), withIntermediateDirectories: true)
             }
-        } catch { blocked = true; message = "Sổ chưa mở được. Dữ liệu được giữ nguyên. " + error.localizedDescription }
+        } catch {
+            blocked = true
+            storageIssue = "Sổ chưa mở được. Dữ liệu được giữ nguyên. " + error.localizedDescription
+            message = storageIssue
+        }
     }
     nonisolated private static func importCompact(_ image: URL, role: EvidenceRole, directory: URL) throws -> DeliveryEvidence {
         let compact = try InvoiceImageEncoder.compact(image)
@@ -70,7 +75,10 @@ final class DeliveryStore: ObservableObject {
     func order(_ id: UUID) -> DeliveryOrder? { ledger.orders.first { $0.id == id } }
     func url(_ evidence: DeliveryEvidence) -> URL { evidenceDirectory.appendingPathComponent(evidence.filename) }
     @discardableResult func change(_ operation: (inout DeliveryLedger) throws -> Void) -> Bool {
-        guard !blocked, let database else { return false }
+        guard !blocked, let database else {
+            message = storageIssue ?? "Sổ đang ở chế độ chỉ đọc. Kiểm tra lỗi mở sổ trước khi ghi thay đổi."
+            return false
+        }
         guard !busy else { message = "Sổ đang xử lý ảnh hoặc sao lưu. Chờ hoàn tất rồi lưu thay đổi."; return false }
         do {
             var next = ledger; try operation(&next)

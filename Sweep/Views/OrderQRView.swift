@@ -14,21 +14,21 @@ struct OrderQRView: View {
     @State private var problem = ""
     private var order: DeliveryOrder? { store.order(id) }
     var body: some View {
-        Form {
+        SweepGroupedScroll {
             if let order {
-                Section {
+                SweepCard {
                     Text(order.customer).font(.headline)
                     LabeledContent("Mã phiếu", value: order.code)
                     LabeledContent("Tổng đơn", value: VND.format(order.total))
                     LabeledContent("Còn lại theo ghi nhận", value: VND.format(order.remaining))
                 }
                 if let account = store.ledger.settings.vietQR {
-                    Section("Tài khoản nhận") {
+                    SweepCard(title: "Tài khoản nhận") {
                         LabeledContent("Ngân hàng / BIN", value: account.bankID)
                         LabeledContent("Số tài khoản", value: account.accountNumber).textSelection(.enabled)
                         Text(account.accountName).font(.headline)
                     }
-                    Section("Chuyển khoản cho đơn này") {
+                    SweepCard(title: "Chuyển khoản cho đơn này") {
                         MoneyInput(title: "Số tiền QR", text: $amount, identifier: "qr.amount")
                         Text("Nội dung: \(VietQR.transferNote(code: order.code))").font(.subheadline)
                         Button("Tạo QR chuyển khoản") { generate() }
@@ -47,7 +47,7 @@ struct OrderQRView: View {
 
                     }
                 } else {
-                    Section {
+                    SweepCard {
                         Text("Điền ngân hàng, số tài khoản và chủ tài khoản một lần trước khi tạo QR theo đơn.")
                         NavigationLink("Thiết lập tài khoản VietQR") { DeliverySettingsView() }
                     }
