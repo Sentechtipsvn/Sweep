@@ -18,7 +18,11 @@ final class SweepUITests: XCTestCase {
         let app = openUnsignedDeliveryFlow("Tiền mặt", expected: "flow.partial")
         tapPillBackground(app.buttons["flow.partial"])
         let amount = app.textFields["flow.cash"]
-        XCTAssertTrue(amount.waitForExistence(timeout: 10)); replace(amount, with: "600000")
+        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        // A center tap can put the caret before the initial right-aligned zero.
+        amount.coordinate(withNormalizedOffset: CGVector(dx: 0.995, dy: 0.5)).tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "600000")
+        XCTAssertEqual(amount.value as? String, "600000")
         dismissKeyboard(in: app)
         let now = app.buttons["flow.partialNow"]
         reveal(now, in: app); now.tap()
@@ -410,7 +414,7 @@ final class SweepUITests: XCTestCase {
         let done = app.buttons["keyboard.done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
-        waitUntil(app.keyboards.firstMatch, in: app) { !$0.exists }
+        waitUntil(app.keyboards.firstMatch, in: app) { !$0.exists || !$0.isHittable }
     }
 
     private func replace(_ field: XCUIElement, with value: String) {
