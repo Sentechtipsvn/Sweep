@@ -138,4 +138,13 @@ final class PayrollTests: XCTestCase {
         XCTAssertNil(ContactLinks.zalo("https://zalo.me@evil.com/fake"))
         XCTAssertNil(ContactLinks.zalo("file:///tmp/image.png"))
     }
+    func testPhoneCandidatesNormalizeVietnameseNumbersAndRejectOtherInput() {
+        let expected = "https://zalo.me/0903123456"
+        for phone in ["0903123456", "+84 903 123 456", "0084 903 123 456", "(090) 312-3456"] {
+            XCTAssertEqual(ContactLinks.zaloPhoneCandidate(phone)?.absoluteString, expected)
+        }
+        for invalid in ["", "123", "0903123456/other", "0903123456?x=1", "0903123456#x", "0903123456 máy lẻ 1", "０９０３１２３４５６"] {
+            XCTAssertNil(ContactLinks.zaloPhoneCandidate(invalid), invalid)
+        }
+    }
 }

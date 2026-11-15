@@ -13,17 +13,22 @@ struct SweepPill: ButtonStyle {
             .background(.ultraThinMaterial, in: Capsule())
             .background(selected ? SweepStyle.green.opacity(0.22) : Color.clear, in: Capsule())
             .overlay(Capsule().stroke(selected ? SweepStyle.green : Color.primary.opacity(0.08), lineWidth: selected ? 1.5 : 0.5))
+            .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
 
 struct SweepCompactPill: ButtonStyle {
+    var expanded = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.subheadline.weight(.semibold)).foregroundStyle(SweepStyle.blue)
-            .fixedSize(horizontal: !typeSize.isAccessibilitySize, vertical: false).padding(.horizontal, 16).frame(minHeight: 44)
+            .fixedSize(horizontal: !expanded && !typeSize.isAccessibilitySize, vertical: true)
+            .padding(.horizontal, expanded ? 10 : 16).padding(.vertical, expanded ? 6 : 0)
+            .frame(maxWidth: expanded ? .infinity : nil, minHeight: 44)
             .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+            .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.6 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: configuration.isPressed)
     }

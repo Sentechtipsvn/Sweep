@@ -7,6 +7,7 @@ struct OrderDetailView: View {
     @State private var preview: URL?
     @State private var settle = false
     @State private var method: DeliveryMethod?
+    @State private var pendingMethod: DeliveryMethod?
     @State private var saveLocation = false
     @State private var locationPrompt = false
     @State private var sign = false
@@ -30,7 +31,7 @@ struct OrderDetailView: View {
                                             let matches = (store.ledger.contacts ?? []).filter { $0.matches(order.salesperson ?? "") }
                                             if matches.count == 1, let contact = matches.first {
                                                 if let u = phoneURL(contact.phone) { Link("Gọi \(contact.name)", destination: u) }
-                                                if let u = URL(string: contact.zalo), !contact.zalo.isEmpty { Link("Zalo \(contact.name)", destination: u) }
+                                                if let u = ContactLinks.zalo(contact.zalo) ?? ContactLinks.zaloPhoneCandidate(contact.phone) { Link("Zalo \(contact.name)", destination: u) }
                                             } else {
                                                 NavigationLink("Chọn liên hệ bán hàng") { ContactsView(seller: order.salesperson ?? "") }
                                                 NavigationLink("Thêm liên hệ bán hàng") { ContactEditor(initialName: order.salesperson ?? "", role: "Bán hàng") }
@@ -50,9 +51,13 @@ struct OrderDetailView: View {
                         if order.voidReason == nil {
                             Section {
                                 ForEach([DeliveryMethod.cash, .bank, .freight]) { item in
-                                    Button(item.rawValue) { method = item }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("method.\(item.id)")
+                                    Button(item.rawValue) { beginDelivery(item) }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("method.\(item.id)")
                                 }
-                            }.disabled(order.activeAssignments.isEmpty)
+                                if order.activeAssignments.isEmpty {
+                                    Text("Chọn cách giao để xác nhận ký nhận trước khi tiếp tục.")
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }
                         }
                         Section("Ký nhận và công đơn") {
                             if let assignment = order.assignments.first {
@@ -133,7 +138,6 @@ struct OrderDetailView: View {
                         }
                     }
                 }
-                .sheet(item: $method, onDismiss: promptForLocation) { DeliveryFlowView(id: id, method: $0) }
                 .sheet(isPresented: $saveLocation) { NavigationStack { PlaceEditor(order: order) } }
                 .onAppear { promptForLocation() }
                 .alert("Lưu vị trí giao hàng?", isPresented: $locationPrompt) {
@@ -142,7 +146,6 @@ struct OrderDetailView: View {
                 }
 
                 .sheet(isPresented: $settle) { SettlementView(order: order) }
-                .sheet(isPresented: $sign) { SignAssignmentView(id: id) }
                 .sheet(isPresented: $edit) { EditOrderView(order: order) }
                 .alert("Hủy và điều chỉnh công?", isPresented: $void) {
                     TextField("Lý do nhập nhầm", text: $reason)
@@ -157,13 +160,30 @@ struct OrderDetailView: View {
             } else { ContentUnavailableView("Không tìm thấy hồ sơ", systemImage: "doc.questionmark") }
         }
         .navigationTitle("Chi tiết đơn").navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $method, onDismiss: promptForLocation) { DeliveryFlowView(id: id, method: $0) }
+        .sheet(isPresented: $sign, onDismiss: resumeDeliveryAfterSigning) { SignAssignmentView(id: id) }
         .toolbar { if order?.voidReason == nil { Button("Sửa") { edit = true } } }
         .quickLookPreview($preview)
         .disabled(store.busy)
     }
     private func promptForLocation() {
-        guard let order, order.taskComplete, order.locationPromptedAt == nil, !store.ledger.hasPlace(for: order) else { return }
+        guard method == nil, !sign, let order, order.taskComplete, order.locationPromptedAt == nil, !store.ledger.hasPlace(for: order) else { return }
         locationPrompt = true
+    }
+    private func beginDelivery(_ selected: DeliveryMethod) {
+        guard let order else { return }
+        if !order.activeAssignments.isEmpty { method = selected; return }
+        guard order.assignments.isEmpty else {
+            store.message = "Công đơn này đã được điều chỉnh hủy. Kiểm tra lịch sử hồ sơ trước khi giao tiếp."
+            return
+        }
+        pendingMethod = selected
+        sign = true
+    }
+    private func resumeDeliveryAfterSigning() {
+        let selected = pendingMethod
+        pendingMethod = nil
+        if order?.activeAssignments.isEmpty == false { method = selected }
     }
     private func markLocationPrompt() {
         _ = store.change { ledger in

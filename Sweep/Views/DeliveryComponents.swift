@@ -61,17 +61,16 @@ struct EvidencePicker: View {
     let title: String
     let onChoose: (URL) async -> Void
     @EnvironmentObject private var store: DeliveryStore
-    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var selection: PhotosPickerItem?
     @State private var camera = false
     @State private var loading = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.subheadline.bold())
-            VStack(alignment: .leading, spacing: 8) { photoButton; cameraButton }
+            HStack(alignment: .top, spacing: 10) { photoButton; cameraButton }
             if loading { ProgressView() }
         }
-        .buttonStyle(SweepCompactPill()).disabled(store.busy || loading)
+        .buttonStyle(SweepCompactPill(expanded: true)).disabled(store.busy || loading)
         .onChange(of: selection) { _, item in
             guard let item else { return }
             Task {

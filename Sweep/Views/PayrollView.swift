@@ -2,41 +2,64 @@ import SwiftUI
 
 private struct AttendanceDay: Identifiable { let date: Date; var id: Date { date } }
 
+/// A single calculation per screen update; calendar cells never rescan the ledger.
+private struct PayrollScreenData {
+    let month: Date
+    let book: PayrollBook
+    let period: PayrollMonth
+    let closed: PayrollSnapshot?
+    let result: PayrollCalculation
+    let signedDays: Set<Date>
+    var year: Int { PayrollDates.calendar.component(.year, from: month) }
+    init(ledger: DeliveryLedger, month: Date) {
+        self.month = month
+        let book = ledger.payroll ?? PayrollBook()
+        self.book = book
+        period = book.period(month)
+        closed = book.closed(month)
+        result = closed?.calculation ?? PayrollCalculation(ledger: ledger, period: period)
+        signedDays = Set(ledger.commissions(in: month, calendar: PayrollDates.calendar).map { PayrollDates.calendar.startOfDay(for: $0.1.signedAt) })
+    }
+}
+private func payrollUnits(_ value: Int) -> String {
+    value % 2 == 0 ? String(value / 2) : String(format: "%.1f", Double(value) / 2)
+}
+
 struct PayrollView: View {
+    private enum Confirmation { case close, reopen }
     @EnvironmentObject private var store: DeliveryStore
     @State private var month = DeliveryMonth.start(Date())
     @State private var day: AttendanceDay?
     @State private var configure = false
     @State private var advance = false
-    @State private var confirmClose = false
-    @State private var reopen = false
+    @State private var confirmation: Confirmation?
     @State private var reason = ""
     @State private var sharing: DeliveryShare?
-    private var book: PayrollBook { store.ledger.payroll ?? PayrollBook() }
-    private var period: PayrollMonth { book.period(month) }
-    private var closed: PayrollSnapshot? { book.closed(month) }
-    private var result: PayrollCalculation { closed?.calculation ?? PayrollCalculation(ledger: store.ledger, period: period) }
-    private var year: Int { PayrollDates.calendar.component(.year, from: month) }
     var body: some View {
-        List {
-            monthSummarySection
-            attendanceSection
-            annualLeaveSection
-            salaryBreakdownSection
-            advancesSection
-            payrollActionsSection
-            payrollHelpSection
-        }.navigationTitle("Chấm công & lương").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { configure = true } label: { Image(systemName: "slider.horizontal.3") }.disabled(closed != nil).accessibilityLabel("Cấu hình lương") } }
+        let data = PayrollScreenData(ledger: store.ledger, month: month)
+        PayrollContent(data: data, canEdit: !store.busy && !store.blocked,
+                       selectDay: { day = AttendanceDay(date: $0) }, move: move,
+                       configure: { configure = true }, advance: { advance = true },
+                       close: { confirmation = .close }, reopen: { reason = ""; confirmation = .reopen },
+                       export: { exportCSV(data) })
+            .navigationTitle("Chấm công & lương").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { configure = true } label: { Image(systemName: "slider.horizontal.3") }
+                        .disabled(data.closed != nil || store.busy || store.blocked).accessibilityLabel("Cấu hình lương")
+                }
+            }
             .sheet(item: $day) { item in
-                NavigationStack { AttendanceEditor(day: item.date, existing: period.entry(item.date), suggested: hasAssignment(item.date)) }
+                NavigationStack {
+                    AttendanceEditor(day: item.date, existing: data.period.entry(item.date), suggested: data.signedDays.contains(item.date))
+                }
             }
             .sheet(isPresented: $configure) {
                 NavigationStack {
-                    PayrollConfigurationView(period: period, opening: book.openingLeaveUnits[String(year)] ?? 0) { value, opening in
+                    PayrollConfigurationView(period: data.period, opening: data.book.openingLeaveUnits[String(data.year)] ?? 0) { value, opening in
                         store.change { ledger in
                             try ledger.changePayroll("Cấu hình lương " + value.id) { book in
-                                try book.put(value); book.openingLeaveUnits[String(year)] = opening
+                                try book.put(value); book.openingLeaveUnits[String(data.year)] = opening
                             }
                         }
                     }
@@ -44,139 +67,199 @@ struct PayrollView: View {
             }
             .sheet(isPresented: $advance) { NavigationStack { SalaryAdvanceEditor(month: month) } }
             .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
-            .alert("Chốt lương tháng này?", isPresented: $confirmClose) {
-                Button("Chốt và giữ bản tính") { _ = store.change { try $0.closePayroll(month) } }
-                Button("Hủy", role: .cancel) {}
-            } message: { Text("Chỉ chốt từ ngày cuối tháng, khi đã đủ công và có giá xăng đúng ngày. Bản tính sẽ được giữ nguyên sau khi khóa.") }
-            .alert("Lý do mở khóa", isPresented: $reopen) {
-                TextField("Lý do điều chỉnh", text: $reason)
-                Button("Mở khóa") { _ = store.change { try $0.reopenPayroll(month, reason: reason) } }
-                Button("Hủy", role: .cancel) {}
-            } message: { Text("Bản lương đã chốt vẫn lưu trong lịch sử; Sếp điều chỉnh rồi chốt thành bản mới.") }
-    }
-    private var monthSummarySection: some View {
-            Section {
-                HStack {
-                    Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.buttonStyle(.borderless)
-                    Spacer()
-                    Text(verbatim: "Tháng \(PayrollDates.calendar.component(.month, from: month)) / \(year)").font(.headline)
-                    Spacer()
-                    Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.buttonStyle(.borderless)
-                }
-                Label(closed == nil ? "Lương tạm tính" : "Bảng lương đã chốt", systemImage: closed == nil ? "clock" : "lock.fill")
-                    .font(.caption).foregroundStyle(closed == nil ? Color.secondary : Color.green)
-                Text(period.policy.confirmed ? VND.format(result.net) : "Chưa cấu hình lương").font(.system(period.policy.confirmed ? .largeTitle : .title2, design: .rounded, weight: .bold)).monospacedDigit()
-                    .accessibilityIdentifier("payroll.net")
-                HStack {
-                    summary("Công", units: result.workUnits)
-                    Spacer()
-                    summary("Nghỉ", units: result.leaveUnits)
-                    Spacer()
-                    VStack { Text("\(result.commissions)").font(.headline); Text("Đơn").font(.caption).foregroundStyle(.secondary) }
-                }
-                if !period.policy.confirmed { Label("Chọn lịch làm việc và xác nhận mức lương trước khi chốt.", systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(.orange) }
-                if result.missingDays > 0 { Text("\(result.missingDays) ngày làm việc chưa chấm; ngày trống không tự coi là nghỉ.").font(.footnote).foregroundStyle(.secondary) }
-            }
-    }
-
-    private var attendanceSection: some View {
-            Section("Chấm công") { calendar }
-    }
-
-    private var annualLeaveSection: some View {
-            Section("Phép năm " + String(year)) {
-                LabeledContent("Đã nghỉ / hạn mức", value: "\(units(book.annualLeaveUnits(year: year))) / 12 ngày")
-                let remaining = 24 - book.annualLeaveUnits(year: year)
-                Text(remaining < 0 ? "Vượt \(units(-remaining)) ngày. Vẫn giữ toàn bộ ngày nghỉ để đối chiếu." : "Còn \(units(remaining)) ngày phép không lương.")
-                    .font(.footnote).foregroundStyle(remaining < 0 ? Color.red : Color.secondary)
-                Text("Nghỉ quá 3 ngày/tháng mất chuyên cần. Đúng 3 ngày vẫn giữ.").font(.footnote).foregroundStyle(.secondary)
-            }
-    }
-
-    private var salaryBreakdownSection: some View {
-            Section("Các khoản tháng này") {
-                ForEach(result.rows, id: \.0) { label, value in
-                    LabeledContent(label, value: !period.policy.confirmed ? "Chưa cấu hình" : label == "Xăng xe" && !result.fuelConfirmed ? "Chờ chốt giá" : VND.format(value))
-                }
-                LabeledContent("Công chuẩn", value: units(result.plannedUnits) + " ngày")
-                LabeledContent("Chốt lương", value: PayrollDates.closeDay(month).formatted(date: .numeric, time: .omitted))
-                LabeledContent("Ngày chốt giá xăng", value: PayrollDates.fuelDay(month).formatted(date: .numeric, time: .omitted))
-                if let fuel = period.fuel {
-                    Text("\(fuel.price)₫/lít · \(fuel.source)").font(.footnote).foregroundStyle(.secondary)
+            .alert(confirmation == .reopen ? "Lý do mở khóa" : "Chốt lương tháng này?",
+                   isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), presenting: confirmation) { value in
+                if value == .reopen {
+                    TextField("Lý do điều chỉnh", text: $reason)
+                    Button("Mở khóa") { _ = store.change { try $0.reopenPayroll(month, reason: reason) } }
                 } else {
-                    Text("Giá ngày 30 áp dụng cho cả tháng; tháng 2 dùng ngày cuối tháng. Không có giá đúng thì để chờ chốt.").font(.footnote).foregroundStyle(.orange)
+                    Button("Chốt và giữ bản tính") { _ = store.change { try $0.closePayroll(month) } }
                 }
+                Button("Hủy", role: .cancel) {}
+            } message: { value in
+                Text(value == .reopen ? "Bản lương đã chốt vẫn lưu trong lịch sử; Sếp điều chỉnh rồi chốt thành bản mới." : "Chỉ chốt từ ngày cuối tháng, khi đã đủ công và có giá xăng đúng ngày. Bản tính sẽ được giữ nguyên sau khi khóa.")
             }
     }
-
-    private var advancesSection: some View {
-            Section("Tạm ứng") {
-                ForEach(period.advances) { item in
-                    VStack(alignment: .leading) {
-                        LabeledContent(item.day.formatted(date: .numeric, time: .omitted), value: VND.format(item.amount))
-                        if !item.note.isEmpty { Text(item.note).font(.caption).foregroundStyle(.secondary) }
-                    }
-                }
-                if closed == nil { Button("Thêm khoản tạm ứng", systemImage: "plus.circle") { advance = true } }
-            }
+    private func move(_ step: Int) {
+        guard let next = PayrollDates.calendar.date(byAdding: .month, value: step, to: month),
+              (1900...2299).contains(PayrollDates.calendar.component(.year, from: next)) else { return }
+        month = next
     }
+    private func exportCSV(_ data: PayrollScreenData) {
+        func escape(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+        var csv = "\u{FEFF}Khoản,Số tiền (VND)\n"
+        csv += data.result.rows.map { escape($0.0) + "," + (!data.period.policy.confirmed ? "Chưa cấu hình" : $0.0 == "Xăng xe" && !data.result.fuelConfirmed ? "Chờ chốt giá" : String($0.1)) }.joined(separator: "\n")
+        csv += "\nTrạng thái," + (data.closed == nil ? "Tạm tính" : "Đã chốt") + "\nNgày,Công\n"
+        csv += data.period.entries.sorted { $0.day < $1.day }.map { escape($0.day.formatted(date: .numeric, time: .omitted)) + "," + escape($0.state.rawValue) }.joined(separator: "\n")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Sweep-luong-\(data.period.id).csv")
+        do { try csv.write(to: url, atomically: true, encoding: .utf8); sharing = DeliveryShare(items: [url]) } catch { store.message = error.localizedDescription }
+    }
+}
 
-    private var payrollActionsSection: some View {
+/// Keep each section a separate view to bound SwiftUI's generated layout and stack use.
+private struct PayrollContent: View {
+    let data: PayrollScreenData
+    let canEdit: Bool
+    let selectDay: (Date) -> Void
+    let move: (Int) -> Void
+    let configure: () -> Void
+    let advance: () -> Void
+    let close: () -> Void
+    let reopen: () -> Void
+    let export: () -> Void
+    var body: some View {
+        List {
+            PayrollSummarySection(data: data, move: move)
+            Section("Chấm công") {
+                PayrollCalendar(period: data.period, signedDays: data.signedDays, canEdit: canEdit && data.closed == nil, select: selectDay)
+            }
+            PayrollLeaveSection(data: data)
+            PayrollSalarySection(data: data)
+            PayrollAdvancesSection(period: data.period, canEdit: canEdit && data.closed == nil, add: advance)
             Section {
-                if closed == nil {
-                    Button("Cấu hình lương và giá xăng", systemImage: "slider.horizontal.3") { configure = true }.accessibilityIdentifier("payroll.configure")
-                    Button("Chốt bảng lương tháng", systemImage: "lock") { confirmClose = true }.disabled(store.busy || store.blocked)
-                        .accessibilityIdentifier("payroll.close")
+                if data.closed == nil {
+                    Button("Cấu hình lương và giá xăng", systemImage: "slider.horizontal.3", action: configure).disabled(!canEdit).accessibilityIdentifier("payroll.configure")
+                    Button("Chốt bảng lương tháng", systemImage: "lock", action: close).disabled(!canEdit).accessibilityIdentifier("payroll.close")
                 } else {
-                    Button("Mở khóa để điều chỉnh", systemImage: "lock.open") { reason = ""; reopen = true }
+                    Button("Mở khóa để điều chỉnh", systemImage: "lock.open", action: reopen).disabled(!canEdit)
                 }
-                Button("Xuất bảng lương CSV", systemImage: "square.and.arrow.up") { exportCSV() }
+                Button("Xuất bảng lương CSV", systemImage: "square.and.arrow.up", action: export)
             }
-    }
-
-    private var payrollHelpSection: some View {
             Section {
                 Text("Chấm công thủ công; đơn đã ký chỉ gợi ý ngày đi làm. Tiền thu hộ không cộng vào lương. Mức tiền và lịch làm việc áp dụng theo cấu hình tháng.").font(.footnote).foregroundStyle(.secondary)
             }
+        }
     }
-
-    private var calendar: some View {
-        let days = PayrollDates.days(month)
-        let assignments = signedDays
-        let offset = (PayrollDates.calendar.component(.weekday, from: days[0]) + 5) % 7
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
-            ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) { Text($0).font(.caption2).foregroundStyle(.secondary) }
-            ForEach(0..<(offset + days.count), id: \.self) { index in
-                if index < offset { Color.clear.frame(height: 44) }
-                else {
-                    let date = days[index - offset], value = period.entry(date)?.state
-                    Button { day = AttendanceDay(date: date) } label: {
-                        VStack(spacing: 2) {
-                            Text("\(PayrollDates.calendar.component(.day, from: date))").font(.subheadline.weight(.medium))
-                            Text(value == .work ? "✓" : value == .half ? "½" : value == .leave ? "N" : value == .off ? "—" : assignments.contains(date) ? "•" : " ").font(.caption)
-                        }.frame(maxWidth: .infinity, minHeight: 48)
-                            .background(value == .work ? SweepStyle.green.opacity(0.2) : value == .leave ? Color.red.opacity(0.1) : Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
-                    }.buttonStyle(.plain)
-                        .disabled(closed != nil || date > PayrollDates.calendar.startOfDay(for: Date()) || store.busy || store.blocked)
-                        .accessibilityLabel("\(date.formatted(date: .complete, time: .omitted)), \(value?.rawValue ?? "Chưa chấm")")
-                        .accessibilityIdentifier("attendance.day.\(PayrollDates.calendar.component(.day, from: date))")
+}
+private struct PayrollSummarySection: View {
+    let data: PayrollScreenData
+    let move: (Int) -> Void
+    var body: some View {
+        Section {
+            HStack {
+                Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
+                    .buttonStyle(.borderless).accessibilityLabel("Tháng trước").accessibilityIdentifier("payroll.previous")
+                Spacer()
+                Text(verbatim: "Tháng \(PayrollDates.calendar.component(.month, from: data.month)) / \(data.year)").font(.headline)
+                Spacer()
+                Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
+                    .buttonStyle(.borderless).accessibilityLabel("Tháng sau").accessibilityIdentifier("payroll.next")
+            }
+            Label(data.closed == nil ? "Lương tạm tính" : "Bảng lương đã chốt", systemImage: data.closed == nil ? "clock" : "lock.fill")
+                .font(.caption).foregroundStyle(data.closed == nil ? Color.secondary : Color.green)
+            Text(data.period.policy.confirmed ? VND.format(data.result.net) : "Chưa cấu hình lương")
+                .font(.system(data.period.policy.confirmed ? .largeTitle : .title2, design: .rounded, weight: .bold)).monospacedDigit().accessibilityIdentifier("payroll.net")
+            HStack {
+                summary("Công", value: payrollUnits(data.result.workUnits))
+                Spacer()
+                summary("Nghỉ", value: payrollUnits(data.result.leaveUnits))
+                Spacer()
+                summary("Đơn", value: String(data.result.commissions))
+            }
+            if !data.period.policy.confirmed { Label("Chọn lịch làm việc và xác nhận mức lương trước khi chốt.", systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(.orange) }
+            if data.result.missingDays > 0 { Text("\(data.result.missingDays) ngày làm việc chưa chấm; ngày trống không tự coi là nghỉ.").font(.footnote).foregroundStyle(.secondary) }
+        }
+    }
+    private func summary(_ title: String, value: String) -> some View {
+        VStack { Text(value).font(.headline); Text(title).font(.caption).foregroundStyle(.secondary) }
+    }
+}
+private struct PayrollLeaveSection: View {
+    let data: PayrollScreenData
+    var body: some View {
+        let used = data.book.annualLeaveUnits(year: data.year)
+        let remaining = 24 - used
+        Section("Phép năm " + String(data.year)) {
+            LabeledContent("Đã nghỉ / hạn mức", value: "\(payrollUnits(used)) / 12 ngày")
+            Text(remaining < 0 ? "Vượt \(payrollUnits(-remaining)) ngày. Vẫn giữ toàn bộ ngày nghỉ để đối chiếu." : "Còn \(payrollUnits(remaining)) ngày phép không lương.")
+                .font(.footnote).foregroundStyle(remaining < 0 ? Color.red : Color.secondary)
+            Text("Nghỉ quá 3 ngày/tháng mất chuyên cần. Đúng 3 ngày vẫn giữ.").font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+}
+private struct PayrollSalarySection: View {
+    let data: PayrollScreenData
+    var body: some View {
+        Section("Các khoản tháng này") {
+            ForEach(data.result.rows, id: \.0) { label, value in
+                LabeledContent(label, value: !data.period.policy.confirmed ? "Chưa cấu hình" : label == "Xăng xe" && !data.result.fuelConfirmed ? "Chờ chốt giá" : VND.format(value))
+            }
+            LabeledContent("Công chuẩn", value: payrollUnits(data.result.plannedUnits) + " ngày")
+            LabeledContent("Chốt lương", value: PayrollDates.closeDay(data.month).formatted(date: .numeric, time: .omitted))
+            LabeledContent("Ngày chốt giá xăng", value: PayrollDates.fuelDay(data.month).formatted(date: .numeric, time: .omitted))
+            if let fuel = data.period.fuel {
+                Text("\(fuel.price)₫/lít · \(fuel.source)").font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text("Giá ngày 30 áp dụng cho cả tháng; tháng 2 dùng ngày cuối tháng. Không có giá đúng thì để chờ chốt.").font(.footnote).foregroundStyle(.orange)
+            }
+        }
+    }
+}
+private struct PayrollAdvancesSection: View {
+    let period: PayrollMonth
+    let canEdit: Bool
+    let add: () -> Void
+    var body: some View {
+        Section("Tạm ứng") {
+            ForEach(period.advances) { item in
+                VStack(alignment: .leading) {
+                    LabeledContent(item.day.formatted(date: .numeric, time: .omitted), value: VND.format(item.amount))
+                    if !item.note.isEmpty { Text(item.note).font(.caption).foregroundStyle(.secondary) }
                 }
             }
-        }.padding(.vertical, 8)
+            if canEdit { Button("Thêm khoản tạm ứng", systemImage: "plus.circle", action: add) }
+        }
     }
-    private func summary(_ title: String, units value: Int) -> some View { VStack { Text(units(value)).font(.headline); Text(title).font(.caption).foregroundStyle(.secondary) } }
-    private func units(_ n: Int) -> String { n % 2 == 0 ? String(n / 2) : String(format: "%.1f", Double(n) / 2) }
-    private func move(_ step: Int) { month = PayrollDates.calendar.date(byAdding: .month, value: step, to: month)! }
-    private var signedDays: Set<Date> { Set(store.ledger.commissions(in: month, calendar: PayrollDates.calendar).map { PayrollDates.calendar.startOfDay(for: $0.1.signedAt) }) }
-    private func hasAssignment(_ day: Date) -> Bool { signedDays.contains(PayrollDates.calendar.startOfDay(for: day)) }
-    private func exportCSV() {
-        func escape(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
-        var csv = "\u{FEFF}Khoản,Số tiền (VND)\n"
-        csv += result.rows.map { escape($0.0) + "," + (!period.policy.confirmed ? "Chưa cấu hình" : $0.0 == "Xăng xe" && !result.fuelConfirmed ? "Chờ chốt giá" : String($0.1)) }.joined(separator: "\n")
-        csv += "\nTrạng thái," + (closed == nil ? "Tạm tính" : "Đã chốt") + "\nNgày,Công\n"
-        csv += period.entries.sorted { $0.day < $1.day }.map { escape($0.day.formatted(date: .numeric, time: .omitted)) + "," + escape($0.state.rawValue) }.joined(separator: "\n")
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Sweep-luong-\(period.id).csv")
-        do { try csv.write(to: url, atomically: true, encoding: .utf8); sharing = DeliveryShare(items: [url]) } catch { store.message = error.localizedDescription }
+}
+private struct PayrollCalendar: View {
+    let period: PayrollMonth
+    let signedDays: Set<Date>
+    let canEdit: Bool
+    let select: (Date) -> Void
+    var body: some View {
+        let days = PayrollDates.days(period.month)
+        if let first = days.first {
+            let offset = (PayrollDates.calendar.component(.weekday, from: first) + 5) % 7
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
+                ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) { Text($0).font(.caption2).foregroundStyle(.secondary) }
+                ForEach(0..<(offset + days.count), id: \.self) { index in
+                    if index < offset { Color.clear.frame(height: 48) }
+                    else {
+                        let date = days[index - offset]
+                        AttendanceDayButton(date: date, state: period.entry(date)?.state, suggested: signedDays.contains(date),
+                                            enabled: canEdit && date <= PayrollDates.calendar.startOfDay(for: Date())) { select(date) }
+                    }
+                }
+            }.padding(.vertical, 8)
+        }
+    }
+}
+private struct AttendanceDayButton: View {
+    let date: Date
+    let state: AttendanceState?
+    let suggested: Bool
+    let enabled: Bool
+    let select: () -> Void
+    private var marker: String {
+        switch state {
+        case .work: return "✓"
+        case .half: return "½"
+        case .leave: return "N"
+        case .off: return "—"
+        case nil: return suggested ? "•" : " "
+        }
+    }
+    var body: some View {
+        Button(action: select) {
+            VStack(spacing: 2) {
+                Text("\(PayrollDates.calendar.component(.day, from: date))").font(.subheadline.weight(.medium))
+                Text(marker).font(.caption)
+            }.frame(maxWidth: .infinity, minHeight: 48)
+                .background(state == .work ? SweepStyle.green.opacity(0.2) : state == .leave ? Color.red.opacity(0.1) : Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain).disabled(!enabled)
+            .accessibilityLabel("\(date.formatted(date: .complete, time: .omitted)), \(state?.rawValue ?? "Chưa chấm")")
+            .accessibilityIdentifier("attendance.day.\(PayrollDates.calendar.component(.day, from: date))")
     }
 }
 

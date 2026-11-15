@@ -9,6 +9,29 @@ func openGoogleMaps(_ destination: String) {
     guard let native = DeliveryDirections.googleMaps(address: destination), let web = DeliveryDirections.googleMaps(address: destination, native: false) else { return }
     UIApplication.shared.open(UIApplication.shared.canOpenURL(native) ? native : web)
 }
+struct ZaloContactButton: View {
+    let phone: String
+    var savedLink = ""
+    var title = "Zalo"
+    @State private var showFallback = false
+    private var destination: URL? { ContactLinks.zalo(savedLink) ?? ContactLinks.zaloPhoneCandidate(phone) }
+    var body: some View {
+        if let destination {
+            Button(title) {
+                UIApplication.shared.open(destination, options: [.universalLinksOnly: true]) { opened in
+                    if !opened { showFallback = true }
+                }
+            }.buttonStyle(SweepCompactPill()).accessibilityIdentifier("contact.zalo")
+                .alert("Chưa mở được liên hệ Zalo", isPresented: $showFallback) {
+                    Button("Mở liên kết bằng trình duyệt") { UIApplication.shared.open(destination) }
+                    if !phone.isEmpty { Button("Sao chép số") { UIPasteboard.general.string = phone } }
+                    Button("Đóng", role: .cancel) {}
+                } message: {
+                    Text("Liên kết theo số có thể bị Zalo hoặc quyền riêng tư của người nhận giới hạn. Sếp có thể tìm bằng số hoặc lưu link từ QR của đúng người.")
+                }
+        }
+    }
+}
 private struct DirectoryHeading: View {
     let title: String
     let kind: String
@@ -62,7 +85,7 @@ struct ContactsView: View {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
                             if !contact.phone.isEmpty { Text(contact.phone).font(.subheadline).textSelection(.enabled) }
-                            if let zalo = ContactLinks.zalo(contact.zalo) { Link("Zalo", destination: zalo).buttonStyle(SweepCompactPill()) }
+                            ZaloContactButton(phone: contact.phone, savedLink: contact.zalo)
                         }
                         Spacer(minLength: 8)
                         SweepCallButton(phone: contact.phone)
@@ -119,11 +142,12 @@ struct ContactEditor: View {
             }
             Section {
                 DisclosureGroup("Zalo · không bắt buộc") {
+                    ZaloContactButton(phone: phone, savedLink: zalo, title: "Thử mở Zalo")
                     TextField("Dán liên kết Zalo nếu có", text: $zalo).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     PhotosPicker(selection: $qr, matching: .images, preferredItemEncoding: .compatible) { Label("Đọc QR Zalo từ ảnh", systemImage: "qrcode") }.disabled(readingQR)
                     if readingQR { ProgressView("Đang đọc QR…") }
                     if !phone.isEmpty { Button("Sao chép số để tìm trong Zalo") { UIPasteboard.general.string = phone } }
-                    Text("Không cần biết link để lưu liên hệ. QR sẽ được kiểm tra và cho xem trước; Sweep không tự nhắn tin.").font(.caption).foregroundStyle(.secondary)
+                    Text("Thử mở bằng số điện thoại; nếu không đúng người, dùng liên kết từ QR hoặc sao chép số để tìm. QR được xem trước khi lưu.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Button("Lưu liên hệ") { saveCheckingDuplicate() }.buttonStyle(SweepPill(selected: true))

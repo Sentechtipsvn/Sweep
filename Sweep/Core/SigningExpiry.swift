@@ -32,4 +32,13 @@ enum ContactLinks {
               u.user == nil, u.password == nil, u.port == nil, u.path.count > 1 else { return nil }
         return u
     }
+    /// A candidate universal link, not a verified mapping from phone number to a Zalo account.
+    static func zaloPhoneCandidate(_ phone: String) -> URL? {
+        let allowed = CharacterSet(charactersIn: "0123456789+().- ").union(.whitespacesAndNewlines)
+        guard phone.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        var number = phoneKey(phone)
+        if number.hasPrefix("0084"), number.count == 13 { number = "0" + number.dropFirst(4) }
+        guard number.range(of: "^0[35789][0-9]{8}$", options: .regularExpression) != nil else { return nil }
+        return URL(string: "https://zalo.me/" + number)
+    }
 }

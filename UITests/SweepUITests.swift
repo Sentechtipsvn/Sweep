@@ -1,6 +1,78 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    func testHotfixUnsignedBankOpensAfterSigningAndQRDoesNotRecordPayment() throws {
+        let app = openUnsignedDeliveryFlow("Chuyển khoản", expected: "flow.bankNow")
+        tapPillBackground(app.buttons["flow.bankNow"])
+        XCTAssertTrue(app.buttons["flow.confirmTransfer"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Thiết lập tài khoản VietQR"].exists)
+        attach(app, name: "hotfix-transfer-now-opens-qr")
+        app.navigationBars.buttons["Đóng"].tap()
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Lịch sử"].tap()
+        assertRow("audit.cashCollected", contains: "0₫", in: app)
+        assertRow("audit.fee", contains: "5.000₫", in: app)
+    }
+
+    func testHotfixPartialCashThenTransferNowPersistsOnlyConfirmedCash() throws {
+        let app = openUnsignedDeliveryFlow("Tiền mặt", expected: "flow.partial")
+        tapPillBackground(app.buttons["flow.partial"])
+        let amount = app.textFields["flow.cash"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 10)); replace(amount, with: "600000")
+        dismissKeyboard(in: app)
+        let now = app.buttons["flow.partialNow"]
+        reveal(now, in: app); now.tap()
+        XCTAssertTrue(app.alerts.buttons["Đã nhận, mở QR phần còn lại"].waitForExistence(timeout: 5))
+        app.alerts.buttons["Đã nhận, mở QR phần còn lại"].tap()
+        XCTAssertTrue(app.buttons["flow.confirmTransfer"].waitForExistence(timeout: 10))
+        attach(app, name: "hotfix-partial-cash-opens-remaining-qr")
+        app.navigationBars.buttons["Đóng"].tap()
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Lịch sử"].tap()
+        assertRow("audit.cashCollected", contains: "600.000₫", in: app)
+        assertRow("audit.fee", contains: "5.000₫", in: app)
+    }
+
+    func testHotfixFreightConfirmationAndHorizontalImageButtons() throws {
+        let app = openUnsignedDeliveryFlow("Giao chành", expected: "flow.freight")
+        tapPillBackground(app.buttons["flow.freight"])
+        XCTAssertTrue(app.alerts.buttons["Chưa giao"].waitForExistence(timeout: 5)); app.alerts.buttons["Chưa giao"].tap()
+        XCTAssertTrue(app.buttons["flow.freight"].exists)
+        tapPillBackground(app.buttons["flow.freight"])
+        XCTAssertTrue(app.alerts.buttons["Đã giao, thêm chứng từ"].waitForExistence(timeout: 5)); app.alerts.buttons["Đã giao, thêm chứng từ"].tap()
+        XCTAssertTrue(app.navigationBars["Chứng từ giao hàng"].waitForExistence(timeout: 10))
+        let photos = app.buttons.matching(identifier: "evidence.photos").firstMatch
+        let camera = app.buttons.matching(identifier: "evidence.camera").firstMatch
+        reveal(photos, in: app)
+        XCTAssertTrue(photos.exists); XCTAssertTrue(camera.exists)
+        XCTAssertLessThan(photos.frame.midX, camera.frame.midX)
+        XCTAssertEqual(photos.frame.midY, camera.frame.midY, accuracy: 2)
+        XCTAssertGreaterThanOrEqual(photos.frame.height, 44); XCTAssertGreaterThanOrEqual(camera.frame.height, 44)
+        attach(app, name: "hotfix-freight-and-horizontal-photo-camera")
+        app.navigationBars.buttons["Đóng"].tap()
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Lịch sử"].tap()
+        assertRow("audit.cashCollected", contains: "0₫", in: app)
+        assertRow("audit.fee", contains: "5.000₫", in: app)
+    }
+
+    private func openUnsignedDeliveryFlow(_ method: String, expected: String) -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery"]
+        app.launch()
+        let order = app.buttons["order.TEST-001"]
+        XCTAssertTrue(order.waitForExistence(timeout: 20)); order.tap()
+        let button = app.buttons["method." + method]
+        reveal(button, in: app); XCTAssertTrue(button.isEnabled); tapPillBackground(button)
+        XCTAssertTrue(app.buttons["sign.confirm"].waitForExistence(timeout: 10))
+        app.buttons["sign.confirm"].tap(); app.buttons["sign.save"].tap()
+        XCTAssertTrue(app.buttons[expected].waitForExistence(timeout: 10))
+        return app
+    }
+    private func tapPillBackground(_ button: XCUIElement) {
+        button.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.5)).tap()
+    }
     func testUpdate02CompactContactsAndPlaces() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -13,6 +85,7 @@ final class SweepUITests: XCTestCase {
         XCTAssertLessThanOrEqual(call.frame.width, 60); XCTAssertGreaterThanOrEqual(call.frame.width, 44)
         XCTAssertGreaterThan(call.frame.midX, app.frame.width * 0.7)
         XCTAssertTrue(app.staticTexts["0900000001"].exists)
+        XCTAssertTrue(app.buttons.matching(identifier: "contact.zalo").firstMatch.exists)
         attach(app, name: "update02-compact-contacts")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.buttons["Vị trí"].tap()
@@ -27,6 +100,10 @@ final class SweepUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Công cụ"].waitForExistence(timeout: 20)); app.tabBars.buttons["Công cụ"].tap()
         app.buttons["tool.payroll"].tap()
+        for _ in 0..<2 {
+            XCTAssertTrue(app.buttons["payroll.previous"].waitForExistence(timeout: 10)); app.buttons["payroll.previous"].tap()
+            XCTAssertTrue(app.buttons["payroll.next"].waitForExistence(timeout: 10)); app.buttons["payroll.next"].tap()
+        }
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
         let today = app.buttons["attendance.day.\(calendar.component(.day, from: Date()))"]
         XCTAssertTrue(today.waitForExistence(timeout: 10)); today.tap()
@@ -114,6 +191,8 @@ final class SweepUITests: XCTestCase {
         let photos = app.buttons["evidence.photos"], camera = app.buttons["evidence.camera"]
         XCTAssertTrue(photos.waitForExistence(timeout: 10)); XCTAssertTrue(camera.exists)
         XCTAssertTrue(photos.label.contains("Chọn ảnh")); XCTAssertTrue(camera.label.contains("Chụp ảnh"))
+        XCTAssertLessThan(photos.frame.midX, camera.frame.midX)
+        XCTAssertEqual(photos.frame.minY, camera.frame.minY, accuracy: 2)
         XCTAssertFalse(app.buttons["Tệp"].exists)
         attach(app, name: "intake-two-photo-sources-large-text")
     }
