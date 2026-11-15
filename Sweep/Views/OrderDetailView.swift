@@ -4,6 +4,7 @@ import QuickLook
 struct OrderDetailView: View {
     let id: UUID
     @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var preview: URL?
     @State private var settle = false
     @State private var method: DeliveryMethod?
@@ -48,6 +49,7 @@ struct OrderDetailView: View {
                             }
                             HStack { Text(order.customer).font(.title3.bold()); Spacer(); Text(VND.format(order.total)).font(.headline).monospacedDigit() }
                             Text(order.code).font(.caption).foregroundStyle(.secondary)
+                            SweepOrderStatus(order: order).font(.subheadline)
                             if !order.address.isEmpty {
                                 Text(order.address).textSelection(.enabled)
                                 Button { openDirections(order.address) } label: { Label("Google Maps", systemImage: "location") }.buttonStyle(SweepPill()).accessibilityIdentifier("order.directions")
@@ -98,8 +100,9 @@ struct OrderDetailView: View {
                                                     .contextMenu {
                                                         Button("Loại khỏi bộ báo cáo…", role: .destructive) { excludedFile = file.id; reason = ""; excluding = true }
                                                     }
+                                                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                                             }
-                                        }
+                                        }.animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: files.map(\.id))
                                     }
                                 }
                                 if order.voidReason == nil { EvidencePicker(title: "Bổ sung \(role.rawValue.lowercased())") { url in await store.attach(url, role: role, to: id) } }
@@ -360,6 +363,7 @@ struct OrderReportView: View {
     let id: UUID
     @EnvironmentObject private var store: DeliveryStore
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var text = ""
     @State private var selectedIDs: [UUID] = []
     @State private var initialized = false
@@ -381,7 +385,7 @@ struct OrderReportView: View {
                         Button("Điền lại") { text = order.shareText(); prepared = nil }
                     }.buttonStyle(.borderless)
                     Button(draftSaved ? "Đã lưu nháp" : "Lưu nháp") {
-                        if store.change({ try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }) { draftSaved = true }
+                        if store.change({ try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }, success: "Đã lưu bản nháp báo cáo") { draftSaved = true }
                     }
                 }
                 ForEach(order.requiredReportRoles.filter { role in !order.activeEvidence.contains { $0.role == role } }, id: \.self) { role in
@@ -394,7 +398,9 @@ struct OrderReportView: View {
                                 Button { preview = store.url(file) } label: { EvidenceThumbnail(url: store.url(file), height: 75).frame(width: 95) }.buttonStyle(.plain)
                                 Text(file.role.rawValue).font(.subheadline)
                                 Spacer(minLength: 0)
-                                Button { selectedIDs.removeAll { $0 == file.id } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.title3) }
+                                Button {
+                                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) { selectedIDs.removeAll { $0 == file.id } }
+                                } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.title3) }
                                     .buttonStyle(.borderless).accessibilityLabel("Bỏ ảnh khỏi lần gửi")
                                     .accessibilityIdentifier("report.remove.\(file.role.rawValue)")
                             }

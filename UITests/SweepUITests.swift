@@ -1,6 +1,30 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    func testProductionZEffectsCashCompletionPersistsWithoutReplay() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN"]
+        app.launch()
+        let row = app.buttons["order.REPLAY-FREIGHT"]
+        XCTAssertTrue(row.waitForExistence(timeout: 20)); row.tap()
+        reveal(app.buttons["method.Tiền mặt"], in: app); tapPillBackground(app.buttons["method.Tiền mặt"])
+        XCTAssertTrue(app.buttons["flow.cashFull"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.cashFull"])
+        XCTAssertTrue(app.alerts.buttons["Đã nhận đủ"].waitForExistence(timeout: 10)); app.alerts.buttons["Đã nhận đủ"].tap()
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 10))
+        if app.alerts["Lưu vị trí giao hàng?"].waitForExistence(timeout: 3) { app.alerts.buttons["Để sau"].tap() }
+        attach(app, name: "production-effects-completed-cash-order")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["order.REPLAY-FREIGHT"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.images["feedback.celebration"].exists)
+        XCTAssertFalse(app.staticTexts["feedback.toast"].exists)
+        app.buttons["order.REPLAY-FREIGHT"].tap()
+        if app.alerts["Lưu vị trí giao hàng?"].waitForExistence(timeout: 2) { app.alerts.buttons["Để sau"].tap() }
+        XCTAssertTrue(app.staticTexts["Đã giao · Tiền mặt chờ nộp"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.images["feedback.celebration"].exists)
+        attach(app, name: "production-effects-no-replay-after-relaunch")
+    }
+
     func testProductionReadOnlyActionsGiveFeedbackAndStillClose() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -13,6 +37,7 @@ final class SweepUITests: XCTestCase {
         reveal(app.buttons["method.Chuyển khoản"], in: app); tapPillBackground(app.buttons["method.Chuyển khoản"])
         XCTAssertTrue(app.buttons["flow.bankLater"].waitForExistence(timeout: 10)); tapPillBackground(app.buttons["flow.bankLater"])
         XCTAssertTrue(app.staticTexts["flow.problem"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["feedback.toast"].exists)
         XCTAssertTrue(app.navigationBars.buttons["Đóng"].isEnabled); app.navigationBars.buttons["Đóng"].tap()
         app.tabBars.buttons["Công cụ"].tap(); app.buttons["tool.payroll"].tap()
         XCTAssertTrue(app.scrollViews["payroll.content"].waitForExistence(timeout: 10))

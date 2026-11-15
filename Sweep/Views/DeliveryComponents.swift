@@ -31,13 +31,18 @@ struct EvidenceThumbnail: View {
     let url: URL
     var height: CGFloat = 160
     @State private var image: UIImage?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Group {
-            if let image { Image(uiImage: image).resizable().scaledToFit() }
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
+            }
             else { Image(systemName: "photo").foregroundStyle(.secondary) }
         }
         .frame(maxWidth: .infinity).frame(height: height)
         .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: image != nil)
         .task(id: url) {
             let key = url.appendingPathExtension("thumb-\(Int(height))") as NSURL
             if let cached = EvidenceThumbnails.cache.object(forKey: key) { image = cached; return }

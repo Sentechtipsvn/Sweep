@@ -6,10 +6,14 @@ final class DeliveryStore: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var blocked = false
     @Published private(set) var storageIssue: String?
-    @Published var message: String?
+    @Published var message: String? {
+        didSet { if message != nil { successNotice = nil } }
+    }
+    @Published private(set) var successNotice: DeliverySuccessNotice?
     let root: URL
     let evidenceDirectory: URL
     private var database: DeliveryDatabase?
+    private let celebrationHistory: DeliveryCelebrationHistory
 
     init(root: URL? = nil) {
         var base = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Delivery", isDirectory: true)
@@ -20,6 +24,7 @@ final class DeliveryStore: ObservableObject {
         }
         #endif
         self.root = base; evidenceDirectory = base.appendingPathComponent("Evidence", isDirectory: true)
+        celebrationHistory = DeliveryCelebrationHistory(file: base.appendingPathComponent("Presentation-completions.json"))
         do {
             try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
             database = try DeliveryDatabase(url: base.appendingPathComponent("Sweep.sqlite"))
@@ -46,6 +51,7 @@ final class DeliveryStore: ObservableObject {
             for name in ["Backups", "Exports"] {
                 try FileManager.default.createDirectory(at: documents.appendingPathComponent(name), withIntermediateDirectories: true)
             }
+            celebrationHistory.seed(ledger)
         } catch {
             blocked = true
             storageIssue = "Sổ chưa mở được. Dữ liệu được giữ nguyên. " + error.localizedDescription
@@ -74,7 +80,7 @@ final class DeliveryStore: ObservableObject {
     }
     func order(_ id: UUID) -> DeliveryOrder? { ledger.orders.first { $0.id == id } }
     func url(_ evidence: DeliveryEvidence) -> URL { evidenceDirectory.appendingPathComponent(evidence.filename) }
-    @discardableResult func change(_ operation: (inout DeliveryLedger) throws -> Void) -> Bool {
+    @discardableResult func change(_ operation: (inout DeliveryLedger) throws -> Void, success: String? = nil) -> Bool {
         guard !blocked, let database else {
             message = storageIssue ?? "Sổ đang ở chế độ chỉ đọc. Kiểm tra lỗi mở sổ trước khi ghi thay đổi."
             return false
@@ -82,9 +88,18 @@ final class DeliveryStore: ObservableObject {
         guard !busy else { message = "Sổ đang xử lý ảnh hoặc sao lưu. Chờ hoàn tất rồi lưu thay đổi."; return false }
         do {
             var next = ledger; try operation(&next)
-            try database.save(next); ledger = next; return true
+            try database.save(next); publishSaved(next, text: success); return true
         } catch { message = error.localizedDescription; return false }
     }
+    private func publishSaved(_ next: DeliveryLedger, text: String? = nil) {
+        var notice = DeliveryFeedbackPolicy.notice(before: ledger, after: next, text: text)
+        ledger = next
+        if let ids = notice?.completedOrderIDs, !ids.isEmpty {
+            notice?.completedOrderIDs = celebrationHistory.claim(ids)
+        }
+        if let notice { successNotice = notice }
+    }
+    func announceSuccess(_ text: String) { successNotice = DeliverySuccessNotice(text: text) }
     func create(_ draft: DeliveryOrder, image: URL?, signedAt: Date?, allowRepeatedImage: Bool = false) async -> UUID? {
         guard !busy, !blocked else { return nil }
         if let old = ledger.orders.first(where: { ($0.sourceID != nil && $0.sourceID == draft.sourceID) || DeliveryOrder.normalizedCode($0.code) == DeliveryOrder.normalizedCode(draft.code) }) { return old.id }
@@ -105,7 +120,7 @@ final class DeliveryStore: ObservableObject {
             var next = ledger
             let id = try next.insert(result)
             if let signedAt { try next.sign(id, at: signedAt) }
-            try database!.save(next); ledger = next; return id
+            try database!.save(next); publishSaved(next, text: "Đã nhận đơn · " + result.code); return id
         } catch {
             if let file { try? FileManager.default.removeItem(at: url(file)) }
             message = error.localizedDescription; return nil
@@ -128,7 +143,7 @@ final class DeliveryStore: ObservableObject {
                 next.orders[i].evidence.append(imported); next.orders[i].revision += 1
                 next.record("Thêm chứng từ", orderID: id, "\(role.rawValue) · \(imported.sha256)")
             } else { next.settings.qr = imported; next.record("Cập nhật QR công ty", imported.sha256) }
-            try database!.save(next); ledger = next
+            try database!.save(next); publishSaved(next)
         } catch {
             if let file { try? FileManager.default.removeItem(at: url(file)) }; message = error.localizedDescription
         }
@@ -152,6 +167,7 @@ final class DeliveryStore: ObservableObject {
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Sweep-\(UUID().uuidString.prefix(8)).sweepbackup")
         do {
             try await Task.detached(priority: .utility) { try DeliveryBackup.write(snapshot, evidence: directory, to: destination) }.value
+            announceSuccess("Đã tạo bản sao lưu sổ")
             return destination
         } catch { message = error.localizedDescription; return nil }
     }
@@ -173,6 +189,8 @@ final class DeliveryStore: ObservableObject {
             next.schema = 3
             next.record("Khôi phục sổ", "Bản trước khi khôi phục: \(recovery.lastPathComponent)")
             try database!.save(next, replacing: true); ledger = next
+            celebrationHistory.seed(next)
+            announceSuccess("Đã khôi phục sổ giao hàng")
             return true
         } catch { message = error.localizedDescription; return false }
     }
@@ -240,6 +258,7 @@ extension DeliveryStore {
                 let path = cache.appendingPathComponent(name)
                 if fm.fileExists(atPath: path.path) { try fm.removeItem(at: path) }
             }
+            announceSuccess(reset ? "Đã sao lưu và đặt lại sổ" : "Đã sao lưu và dọn dữ liệu tạm")
             return destination
         } catch { message = "Chưa hoàn tất: " + error.localizedDescription; return nil }
     }

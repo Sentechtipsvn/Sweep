@@ -6,8 +6,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.6.2"
-    CURRENT_PROJECT_VERSION: "12"
+    MARKETING_VERSION: "0.7.0"
+    CURRENT_PROJECT_VERSION: "13"
     SWEEP_APP_GROUP: group.com.sentechtipsvn.sweep
     CODE_SIGNING_ALLOWED: NO
 targets:
@@ -45,6 +45,16 @@ targets:
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+  SweepFeedbackTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: Sweep
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sentechtipsvn.sweep.feedbacktests
+        GENERATE_INFOPLIST_FILE: YES
   SweepUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -68,3 +78,10 @@ schemes:
     test:
       config: Debug
       targets: [SweepUITests]
+  SweepFeedback:
+    build:
+      targets:
+        Sweep: all
+    test:
+      config: Debug
+      targets: [SweepFeedbackTests]

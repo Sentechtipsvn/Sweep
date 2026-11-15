@@ -63,7 +63,7 @@ struct OrdersView: View {
                             HStack { Text(order.customer).font(.headline); Spacer(); Text(VND.format(order.total)).font(.subheadline.bold()).monospacedDigit() }
                             Text(order.code).font(.caption).foregroundStyle(.secondary)
                             HStack {
-                                Text(order.workflowStatus)
+                                SweepOrderStatus(order: order)
                                 Spacer()
                                 if !order.activeAssignments.isEmpty { Label("Đã tính công", systemImage: "checkmark.seal.fill").foregroundStyle(.green) }
                                 else { Text("Chưa tính công").foregroundStyle(.secondary) }

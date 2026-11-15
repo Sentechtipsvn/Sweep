@@ -258,6 +258,7 @@ private struct AttendanceDayButton: View {
     let suggested: Bool
     let enabled: Bool
     let select: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var marker: String {
         switch state {
         case .work: return "✓"
@@ -271,11 +272,13 @@ private struct AttendanceDayButton: View {
         Button(action: select) {
             VStack(spacing: 2) {
                 Text("\(PayrollDates.calendar.component(.day, from: date))").font(.subheadline.weight(.medium))
-                Text(marker).font(.caption)
+                Text(marker).font(.caption).id(marker)
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             }.frame(maxWidth: .infinity, minHeight: 48)
                 .background(state == .work ? SweepStyle.green.opacity(0.2) : state == .leave ? Color.red.opacity(0.1) : Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
                 .contentShape(Rectangle())
-        }.buttonStyle(.plain).disabled(!enabled)
+        }.buttonStyle(SweepDayPress()).disabled(!enabled)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.75), value: state)
             .accessibilityLabel("\(date.formatted(date: .complete, time: .omitted)), \(state?.rawValue ?? "Chưa chấm")")
             .accessibilityIdentifier("attendance.day.\(PayrollDates.calendar.component(.day, from: date))")
     }

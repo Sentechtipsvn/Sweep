@@ -6,6 +6,7 @@ enum SweepStyle {
 }
 struct SweepPill: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var selected = false
     var expanded = true
     func makeBody(configuration: Configuration) -> some View {
@@ -16,6 +17,11 @@ struct SweepPill: ButtonStyle {
             .overlay(Capsule().stroke(selected ? SweepStyle.green : Color.primary.opacity(0.08), lineWidth: selected ? 1.5 : 0.5))
             .contentShape(Capsule())
             .opacity(!isEnabled ? 0.4 : configuration.isPressed ? 0.6 : 1)
+            .scaleEffect(isEnabled && configuration.isPressed && !reduceMotion ? 0.965 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if pressed && isEnabled && selected { UIImpactFeedbackGenerator(style: .soft).impactOccurred() }
+            }
     }
 }
 
@@ -32,7 +38,31 @@ struct SweepCompactPill: ButtonStyle {
             .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             .contentShape(Capsule())
             .opacity(!isEnabled ? 0.4 : configuration.isPressed ? 0.6 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: configuration.isPressed)
+            .scaleEffect(isEnabled && configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
+struct SweepOrderStatus: View {
+    let order: DeliveryOrder
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        HStack(spacing: 5) {
+            if order.taskComplete && order.voidReason == nil {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(SweepStyle.green)
+                    .transition(.scale.combined(with: .opacity)).accessibilityHidden(true)
+            }
+            Text(order.workflowStatus).foregroundStyle(order.taskComplete && order.voidReason == nil ? SweepStyle.green : Color.secondary)
+        }.animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: order.workflowStatus)
+    }
+}
+
+struct SweepDayPress: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
 struct SweepCallButton: View {
