@@ -61,6 +61,7 @@ struct EvidencePicker: View {
     let title: String
     let onChoose: (URL) async -> Void
     @EnvironmentObject private var store: DeliveryStore
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var selection: PhotosPickerItem?
     @State private var camera = false
     @State private var loading = false
@@ -107,13 +108,24 @@ struct EvidencePicker: View {
     }
     private var photoButton: some View {
         PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .compatible) {
-            Label("Chọn ảnh", systemImage: "photo.on.rectangle")
+            sourceLabel("Chọn ảnh", icon: "photo.on.rectangle")
         }.accessibilityIdentifier("evidence.photos")
     }
     private var cameraButton: some View {
         Button { camera = true } label: {
-            Label("Chụp ảnh", systemImage: "camera")
+            sourceLabel("Chụp ảnh", icon: "camera")
         }.disabled(!UIImagePickerController.isSourceTypeAvailable(.camera)).accessibilityIdentifier("evidence.camera")
+    }
+    @ViewBuilder private func sourceLabel(_ title: String, icon: String) -> some View {
+        if typeSize.isAccessibilitySize {
+            VStack(spacing: 8) {
+                Image(systemName: icon).font(.title3)
+                Text(title.replacingOccurrences(of: " ", with: "\n"))
+                    .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
+            }.frame(maxWidth: .infinity).accessibilityElement(children: .ignore).accessibilityLabel(title)
+        } else {
+            Label(title, systemImage: icon)
+        }
     }
 }
 
