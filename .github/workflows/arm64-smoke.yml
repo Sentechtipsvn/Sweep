@@ -1,0 +1,83 @@
+name: Sweep ARM64 phone issue verification
+on:
+  push:
+    branches: ['verify/0.6.1-arm64']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ui:
+    name: ARM64 ${{ matrix.configuration }} UI
+    runs-on: macos-15
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure Xcode and project
+        run: |
+          uname -m
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate
+      - name: Start simulator with a bounded boot wait
+        timeout-minutes: 4
+        run: |
+          python3 - <<'PY'
+          import subprocess,json,os
+          data=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','-j']))
+          device=next(x['udid'] for runtime,items in data['devices'].items() if 'iOS-18-5' in runtime for x in items if x['name']=='iPhone 16')
+          print('Selected simulator:',device,flush=True)
+          with open(os.environ['GITHUB_ENV'],'a') as f: f.write('SWEEP_TEST_SIMULATOR='+device+'\n')
+          subprocess.run(['xcrun','simctl','boot',device])
+          subprocess.run(['xcrun','simctl','bootstatus',device,'-b'],check=True,timeout=180)
+          PY
+      - name: Test reported actions
+        timeout-minutes: 18
+        env:
+          SWEEP_TEST_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          set -o pipefail
+          python3 -u - <<'PY' | tee arm64-test.log
+          import subprocess,os
+          configuration=os.environ['SWEEP_TEST_CONFIGURATION']
+          tests=['testUpdate02AttendanceCalendarSavesAndPersists']
+          if configuration=='Debug':
+              tests+=['testHotfixUnsignedBankOpensAfterSigningAndQRDoesNotRecordPayment',
+                      'testHotfixPartialCashThenTransferNowPersistsOnlyConfirmedCash',
+                      'testHotfixFreightConfirmationAndHorizontalImageButtons',
+                      'testIntakeHasOnlyPhotoAndCameraSourcesAtLargeTextSize',
+                      'testSharedImageReviewImportQRSetupAndRelaunch']
+          command=['xcodebuild','-project','Sweep.xcodeproj','-scheme','Sweep','-configuration',configuration,
+                   '-destination','platform=iOS Simulator,id='+os.environ['SWEEP_TEST_SIMULATOR'],
+                   '-destination-timeout','60','-derivedDataPath','build-arm64','-resultBundlePath','arm64-ui.xcresult',
+                   'CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-test-timeouts-enabled','YES',
+                   '-default-test-execution-time-allowance','120','-maximum-test-execution-time-allowance','180']
+          command+=['-only-testing:SweepUITests/SweepUITests/'+test for test in tests]+['test']
+          result=subprocess.run(command,timeout=1000)
+          raise SystemExit(result.returncode)
+          PY
+      - name: Export screenshots and diagnostics
+        if: always()
+        run: |
+          xcrun simctl list devices > simulator-state.txt
+          if [ -d arm64-ui.xcresult ]; then
+            xcrun xcresulttool export attachments --path arm64-ui.xcresult --output-path screenshots || true
+          fi
+          mkdir -p crash-reports
+          find "$HOME/Library/Logs/DiagnosticReports" -name '*Sweep*' -exec cp {} crash-reports/ \; || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Sweep-arm64-${{ matrix.configuration }}-evidence
+          path: |
+            arm64-test.log
+            simulator-state.txt
+            screenshots/
+            crash-reports/
+          if-no-files-found: ignore
