@@ -1,7 +1,7 @@
 name: Sweep device layout and production Release regression
 on:
   push:
-    branches: ['fix/0.6.2-device-layout']
+    branches: ['fix/0.6.2-device-layout', 'verify/0.6.2-readonly']
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   device:
+    if: github.ref_name != 'verify/0.6.2-readonly'
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -51,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configuration: [Debug, Release]
+        configuration: ${{ fromJSON(github.ref_name == 'verify/0.6.2-readonly' && '["Release"]' || '["Debug","Release"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,12 +83,14 @@ jobs:
         timeout-minutes: 22
         env:
           SWEEP_TEST_CONFIGURATION: ${{ matrix.configuration }}
+          SWEEP_READ_ONLY_REPLAY: ${{ github.ref_name == 'verify/0.6.2-readonly' && '1' || '0' }}
         run: |
           set -o pipefail
           python3 -u - <<'PY' | tee device-ui.log
           import subprocess,os,shutil
           from pathlib import Path
           configuration=os.environ['SWEEP_TEST_CONFIGURATION']; device=os.environ['SWEEP_TEST_SIMULATOR']
+          read_only_replay=os.environ['SWEEP_READ_ONLY_REPLAY']=='1'
           base=['xcodebuild','-project','Sweep.xcodeproj','-scheme','Sweep','-configuration',configuration,
                 '-destination','platform=iOS Simulator,id='+device,'-destination-timeout','60',
                 '-derivedDataPath','build-ui','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO',
@@ -100,8 +103,9 @@ jobs:
               subprocess.run(['xcrun','simctl','install',device,str(app)],check=True)
               container=Path(subprocess.check_output(['xcrun','simctl','get_app_container',device,'com.sentechtipsvn.sweep','data'],text=True).strip())
               target=container/'Library/Application Support/Delivery'
-              shutil.copytree('production-replay',target,dirs_exist_ok=True)
-              tests=['testProductionReleaseAttendanceNavigationAndRotation','testProductionReleaseDeliveryBranches']
+              fixture='production-replay/ReadOnly' if read_only_replay else 'production-replay'
+              shutil.copytree(fixture,target,dirs_exist_ok=True)
+              tests=['testProductionReadOnlyActionsGiveFeedbackAndStillClose'] if read_only_replay else ['testProductionReleaseAttendanceNavigationAndRotation','testProductionReleaseDeliveryBranches']
               action='test-without-building'
           else:
               tests=['testAttendanceLargeTextNavigationUsesPlainScroll','testPaidOrderActionsExplainGuardAndCanReopenQR',
@@ -117,9 +121,13 @@ jobs:
           command=base+['-resultBundlePath','device-ui.xcresult']+['-only-testing:SweepUITests/SweepUITests/'+test for test in tests]+[action]
           result=subprocess.run(command,timeout=1000)
           if result.returncode: raise SystemExit(result.returncode)
-          if configuration=='Release':
-              subprocess.run(['xcrun','simctl','terminate',device,'com.sentechtipsvn.sweep'])
-              shutil.rmtree(target)
+          if configuration=='Release' and not read_only_replay:
+              subprocess.run(['xcrun','simctl','terminate',device,'com.sentechtipsvn.sweep'],capture_output=True)
+              # XCTest may reinstall the app into a different data-container UUID.
+              subprocess.run(['xcrun','simctl','install',device,str(app)],check=True)
+              container=Path(subprocess.check_output(['xcrun','simctl','get_app_container',device,'com.sentechtipsvn.sweep','data'],text=True).strip())
+              target=container/'Library/Application Support/Delivery'
+              if target.exists(): shutil.rmtree(target)
               shutil.copytree('production-replay/ReadOnly',target)
               read_only=base+['-resultBundlePath','readonly-ui.xcresult',
                              '-only-testing:SweepUITests/SweepUITests/testProductionReadOnlyActionsGiveFeedbackAndStillClose',
