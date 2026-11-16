@@ -1,0 +1,80 @@
+name: Sendeli 0.8.1 reminders and layout
+on:
+  push:
+    branches: ['fix/0.8.1-reminders-layout']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sendeli-reminders-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure Xcode and test ledger
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          swift test
+          brew install xcodegen
+          xcodegen generate
+      - name: Build Release app and Share Extension for iPhone
+        run: |
+          set -o pipefail
+          xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee device-build.log
+          python3 Tools/package_ipa.py --app build-device/Build/Products/Release-iphoneos/Sweep.app \
+            --output dist/Sendeli-0.8.1-build15.ipa
+      - name: Boot iPhone 11 simulator
+        timeout-minutes: 5
+        run: |
+          python3 -u - <<'PYCODE'
+          import subprocess,json,os
+          data=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','-j']))
+          runtime=next(key for key in data['devices'] if 'iOS-18-5' in key)
+          device=subprocess.check_output(['xcrun','simctl','create','Sendeli iPhone 11','com.apple.CoreSimulator.SimDeviceType.iPhone-11',runtime],text=True).strip()
+          with open(os.environ['GITHUB_ENV'],'a') as f: f.write('SWEEP_TEST_SIMULATOR='+device+'\n')
+          subprocess.run(['xcrun','simctl','boot',device],check=True)
+          subprocess.run(['xcrun','simctl','bootstatus',device,'-b'],check=True,timeout=240)
+          PYCODE
+      - name: Test reminders, cancellation, relaunch, layout and existing delivery flows
+        run: |
+          set -o pipefail
+          xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SWEEP_TEST_SIMULATOR" -derivedDataPath build-ui \
+            CODE_SIGNING_ALLOWED=NO -parallel-testing-enabled NO -resultBundlePath device-ui.xcresult \
+            -only-testing:SweepUITests/SweepUITests/testUpdate03CompactHeaderAndReminderPaymentConfirmationPersists \
+            -only-testing:SweepUITests/SweepUITests/testUpdate03HistoryAndSettingsHaveSingleDestinations \
+            -only-testing:SweepUITests/SweepUITests/testSendeliTwoTabsHistoryAndSearch \
+            -only-testing:SweepUITests/SweepUITests/testSendeliWorkCardAndCompactDirectories \
+            -only-testing:SweepUITests/SweepUITests/testHotfixUnsignedBankOpensAfterSigningAndQRDoesNotRecordPayment \
+            -only-testing:SweepUITests/SweepUITests/testHotfixPartialCashThenTransferNowPersistsOnlyConfirmedCash \
+            -only-testing:SweepUITests/SweepUITests/testHotfixFreightConfirmationAndHorizontalImageButtons \
+            test | tee device-ui.log
+      - name: Export screenshots
+        if: always()
+        run: |
+          if [ -d device-ui.xcresult ]; then
+            xcrun xcresulttool export attachments --path device-ui.xcresult --output-path screenshots || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: Sendeli-0.8.1-build15
+          path: dist/
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Sendeli-build15-validation
+          path: |
+            device-build.log
+            device-ui.log
+            screenshots/
+          if-no-files-found: ignore
+          retention-days: 30

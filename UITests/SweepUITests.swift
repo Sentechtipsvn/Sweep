@@ -30,6 +30,7 @@ final class SweepUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--update02-ui-testing", "--monthly-ui-testing"]
         app.launch()
+        app.buttons["filter.Đã giao"].tap()
         XCTAssertTrue(app.buttons["orders.work"].waitForExistence(timeout: 20)); app.buttons["orders.work"].tap()
         XCTAssertTrue(app.navigationBars["Việc cần chốt"].waitForExistence(timeout: 10))
         attach(app, name: "sendeli-worklist")
@@ -41,6 +42,72 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Điều hướng Google Maps"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["contact.call"].firstMatch.exists)
         attach(app, name: "sendeli-compact-places")
+    }
+    func testUpdate03CompactHeaderAndReminderPaymentConfirmationPersists() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--reminder-ui-testing"]
+        app.launch()
+        let search = app.textFields["orders.search"], delivered = app.buttons["filter.Đã giao"]
+        XCTAssertTrue(search.waitForExistence(timeout: 20))
+        XCTAssertLessThan(delivered.frame.minY - search.frame.maxY, 60)
+        XCTAssertFalse(app.buttons["orders.work"].exists)
+        delivered.tap()
+        let work = app.buttons["orders.work"]
+        XCTAssertTrue(work.waitForExistence(timeout: 10))
+        XCTAssertEqual(work.label, "Còn 2 việc cần xử lý")
+        let period = app.staticTexts["Đã giao trong ngày"]
+        XCTAssertEqual(work.frame.midY, period.frame.midY, accuracy: 5)
+        attach(app, name: "update03-compact-delivered-header")
+        work.tap()
+        let payment = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "work.payment.")).firstMatch
+        XCTAssertTrue(payment.waitForExistence(timeout: 10)); payment.tap()
+        XCTAssertTrue(app.buttons["work.transfer.confirm"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["flow.bankNow"].exists); XCTAssertFalse(app.buttons["flow.bankLater"].exists)
+        attach(app, name: "update03-two-action-payment-sheet")
+        tapPillBackground(app.buttons["work.transfer.cancel"])
+        XCTAssertTrue(payment.waitForExistence(timeout: 10)); payment.tap()
+        tapPillBackground(app.buttons["work.transfer.confirm"])
+        XCTAssertTrue(app.alerts.buttons["Xác nhận và hoàn tất"].waitForExistence(timeout: 10))
+        app.alerts.buttons["Huỷ"].tap()
+        XCTAssertTrue(app.buttons["work.transfer.confirm"].exists)
+        tapPillBackground(app.buttons["work.transfer.confirm"])
+        app.alerts.buttons["Xác nhận và hoàn tất"].tap()
+        XCTAssertTrue(app.navigationBars["Việc cần chốt"].waitForExistence(timeout: 10))
+        XCTAssertFalse(payment.exists)
+        let freight = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "work.freight.")).firstMatch
+        XCTAssertTrue(freight.exists); freight.tap()
+        tapPillBackground(app.buttons["work.transfer.confirm"])
+        app.alerts.buttons["Xác nhận và hoàn tất"].tap()
+        XCTAssertTrue(app.navigationBars["Việc cần chốt"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons["Đơn hàng"].tap()
+        XCTAssertFalse(app.buttons["orders.work"].exists)
+        attach(app, name: "update03-no-work-after-confirmation")
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "--reset-delivery" }
+        app.launch()
+        XCTAssertTrue(app.buttons["filter.Đã giao"].waitForExistence(timeout: 20)); app.buttons["filter.Đã giao"].tap()
+        XCTAssertFalse(app.buttons["orders.work"].exists)
+        XCTAssertTrue(app.buttons["order.TEST-FREIGHT"].exists)
+        attach(app, name: "update03-confirmation-survives-relaunch")
+    }
+    func testUpdate03HistoryAndSettingsHaveSingleDestinations() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--monthly-ui-testing"]
+        app.launch()
+        app.tabBars.buttons["Lịch sử"].tap()
+        let all = app.buttons["history.all"]; reveal(all, in: app)
+        XCTAssertTrue(all.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "PHIẾU TÍNH CÔNG ·")).firstMatch.exists)
+        attach(app, name: "update03-history-without-repeated-order-list")
+        all.tap(); XCTAssertTrue(app.buttons["order.TEST-001"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Cài đặt"].tap()
+        XCTAssertFalse(app.buttons["Liên hệ bán hàng / tài xế"].exists)
+        XCTAssertFalse(app.buttons["Dọn dẹp / đặt lại dữ liệu"].exists)
+        XCTAssertFalse(app.buttons["Chấm công và lương"].exists)
+        XCTAssertTrue(app.buttons["Công đơn và QR công ty"].exists)
+        attach(app, name: "update03-settings-without-duplicate-tools")
     }
     func testProductionZEffectsCashCompletionPersistsWithoutReplay() throws {
         continueAfterFailure = false

@@ -107,6 +107,13 @@ struct BankVerification: Codable, Identifiable, Equatable {
     var note: String
     var at = Date()
 }
+/// Money received after delivery, without changing the original delivery/report branch.
+struct CustomerTransferConfirmation: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var settlementID: UUID
+    var amount: Int64
+    var at = Date()
+}
 struct DeliveryReport: Codable, Identifiable, Equatable {
     var id = UUID()
     var revision: Int
@@ -152,6 +159,7 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var reversals: [CommissionReversal] = []
     var settlements: [Settlement] = []
     var bankChecks: [BankVerification] = []
+    var customerTransfers: [CustomerTransferConfirmation]? = nil
     var reports: [DeliveryReport] = []
     var reportDrafts: [DeliveryReportDraft] = []
     var reportAcks: [ReportAcknowledgement] = []
@@ -163,14 +171,16 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var settlement: Settlement? { settlements.last }
     var outcome: DeliveryOutcome { settlement?.outcome ?? .pending }
     var cash: Int64 { settlement?.cash ?? 0 }
-    var bank: Int64 { settlement?.bank ?? 0 }
+    var bank: Int64 {
+        (settlement?.bank ?? 0) + (customerTransfers ?? []).filter { $0.settlementID == settlement?.id }.reduce(0) { $0 + $1.amount }
+    }
     var remaining: Int64 { total - cash - bank }
     var verifiedBank: Int64 { bankChecks.last(where: { $0.settlementID == settlement?.id })?.amount ?? 0 }
     var activeAssignments: [SignedAssignment] { assignments.filter { a in !reversals.contains { $0.assignmentID == a.id } } }
     var reportContentKey: String {
         // Bank verification, contact/location edits and unselected photos do not invalidate a sent report.
         let fields = [code, customer, String(total), outcome.rawValue, settlement?.mode.rawValue ?? "",
-                      String(cash), String(bank), settlement?.route?.rawValue ?? "", settlement?.note ?? ""]
+                      String(cash), String(settlement?.bank ?? 0), settlement?.route?.rawValue ?? "", settlement?.note ?? ""]
         return (try? String(data: DeliveryCoding.encode(fields), encoding: .utf8)) ?? ""
     }
     var reportSent: Bool {
@@ -351,12 +361,26 @@ struct DeliveryLedger: Codable, Equatable {
         record("Chốt giao / tiền", orderID: id, "\(before) → TM \(value.cash), CK \(value.bank) · \(value.outcome.rawValue) · \(value.note)")
     }
     mutating func verifyBank(_ id: UUID, note: String) throws {
-        guard let i = orders.firstIndex(where: { $0.id == id }), let payment = orders[i].settlement, payment.bank > 0,
+        guard let i = orders.firstIndex(where: { $0.id == id }), let payment = orders[i].settlement, orders[i].bank > 0,
               !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Ghi nguồn xác nhận công ty đã nhận chuyển khoản.") }
-        guard orders[i].verifiedBank != payment.bank else { return }
-        orders[i].bankChecks.append(BankVerification(settlementID: payment.id, amount: payment.bank, note: note))
+        guard orders[i].verifiedBank != orders[i].bank else { return }
+        orders[i].bankChecks.append(BankVerification(settlementID: payment.id, amount: orders[i].bank, note: note))
         orders[i].revision += 1
-        record("Đối soát CK", orderID: id, "\(payment.bank) · \(note)")
+        record("Đối soát CK", orderID: id, "\(orders[i].bank) · \(note)")
+    }
+    mutating func confirmCustomerTransfer(_ id: UUID, settlementID: UUID, amount: Int64) throws {
+        guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].voidReason == nil,
+              let payment = orders[i].settlement, payment.id == settlementID,
+              payment.outcome == .delivered, payment.route != .cashFull else {
+            throw DeliveryError.invalid("Đơn đã thay đổi. Mở lại nhắc việc để kiểm tra khoản còn thiếu.")
+        }
+        if orders[i].remaining == 0, orders[i].customerTransfers?.contains(where: { $0.settlementID == settlementID && $0.amount == amount }) == true { return }
+        guard amount > 0, amount == orders[i].remaining else {
+            throw DeliveryError.invalid("Khoản còn thiếu đã thay đổi. Kiểm tra lại trước khi xác nhận.")
+        }
+        orders[i].customerTransfers = (orders[i].customerTransfers ?? []) + [CustomerTransferConfirmation(settlementID: settlementID, amount: amount)]
+        // Delivery report content did not change, including legacy revision-based reports.
+        record("Khách đã chuyển khoản", orderID: id, "\(amount) · giữ nhánh \(payment.route?.rawValue ?? payment.mode.rawValue)")
     }
     mutating func prepareReport(_ id: UUID, text: String, evidenceIDs: [UUID]? = nil) throws -> DeliveryReport {
         guard let i = orders.firstIndex(where: { $0.id == id }), orders[i].settlement != nil, orders[i].voidReason == nil else {
@@ -471,8 +495,22 @@ struct DeliveryLedger: Codable, Equatable {
             for value in order.assignments { try VND.check(value.fee) }
             guard order.assignments.isEmpty || order.evidence.contains(where: { $0.role == .invoice }) else { throw DeliveryError.invalid("Lượt ký nhận thiếu phiếu nội bộ.") }
             for reversal in order.reversals where !order.assignments.contains(where: { $0.id == reversal.assignmentID }) { throw DeliveryError.invalid("Điều chỉnh công thiếu lượt ký gốc.") }
+            let transfers = order.customerTransfers ?? []
+            guard transfers.count <= 100_000 else { throw DeliveryError.invalid("Quá nhiều xác nhận khách chuyển khoản.") }
+            for transfer in transfers {
+                try VND.check(transfer.amount)
+                guard transfer.amount > 0, transfer.at.timeIntervalSince1970.isFinite,
+                      order.settlements.contains(where: { $0.id == transfer.settlementID && $0.outcome == .delivered && $0.route != .cashFull }) else {
+                    throw DeliveryError.invalid("Xác nhận khách chuyển khoản không khớp khoản còn thiếu.")
+                }
+            }
+            let receivedBySettlement = Dictionary(grouping: transfers, by: \.settlementID).mapValues { $0.reduce(Int64(0)) { $0 + $1.amount } }
+            for payment in order.settlements {
+                guard payment.cash + payment.bank + (receivedBySettlement[payment.id] ?? 0) <= order.total else { throw DeliveryError.invalid("Xác nhận khách chuyển khoản vượt tổng đơn.") }
+            }
             for check in order.bankChecks {
-                guard order.settlements.contains(where: { $0.id == check.settlementID && $0.bank == check.amount }), check.amount > 0 else { throw DeliveryError.invalid("Đối soát CK không khớp khoản thu.") }
+                let received = receivedBySettlement[check.settlementID] ?? 0
+                guard order.settlements.contains(where: { $0.id == check.settlementID && $0.bank <= check.amount && check.amount <= $0.bank + received }), check.amount > 0 else { throw DeliveryError.invalid("Đối soát CK không khớp khoản thu.") }
             }
             for report in order.reports where !Set(report.evidenceIDs).isSubset(of: Set(order.evidence.map(\.id))) { throw DeliveryError.invalid("Báo cáo thiếu ảnh nguồn.") }
             guard Set(order.exclusions.map(\.evidenceID)).count == order.exclusions.count else { throw DeliveryError.invalid("Trùng sự kiện loại ảnh.") }
@@ -488,6 +526,7 @@ struct DeliveryLedger: Codable, Equatable {
             ids += order.bankChecks.map(\.id) + order.reports.map(\.id) + order.reportAcks.map(\.id)
             ids += order.exclusions.map(\.id)
             ids += order.reportDrafts.map(\.id)
+            ids += (order.customerTransfers ?? []).map(\.id)
         }
         guard Set(ids).count == ids.count else { throw DeliveryError.invalid("Trùng ID sự kiện trong sổ.") }
         guard cashHeld >= 0, Set(allEvidence.map(\.id)).count == allEvidence.count,
@@ -511,6 +550,7 @@ struct DeliveryLedger: Codable, Equatable {
                   keeps(old.exclusions, new.exclusions),
                   keeps(old.settlements, new.settlements), keeps(old.bankChecks, new.bankChecks), keeps(old.reports, new.reports), keeps(old.reportAcks, new.reportAcks),
                   keeps(old.reportDrafts, new.reportDrafts),
+                  keeps(old.customerTransfers ?? [], new.customerTransfers ?? []),
                   old.voidReason == nil || old.voidReason == new.voidReason else { throw DeliveryError.invalid("Lịch sử hồ sơ phải được giữ nguyên; dùng bản ghi điều chỉnh.") }
         }
     }

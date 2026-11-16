@@ -28,6 +28,7 @@ enum DeliveryFeedbackPolicy {
         case "Ký nhận đi giao": caption = "Đã lưu ký nhận và công đơn"
         case "Chốt giao / tiền": caption = "Đã lưu giao hàng và khoản thực nhận"
         case "Đối soát CK": caption = "Đã lưu đối soát chuyển khoản"
+        case "Khách đã chuyển khoản": caption = "Đã xác nhận khách chuyển khoản · xong nhắc tiền"
         case "Sếp xác nhận đã gửi": caption = "Đã lưu xác nhận gửi chứng từ"
         case "Thêm chứng từ": caption = "Đã thêm ảnh chứng từ"
         case "Cập nhật QR công ty": caption = "Đã cập nhật ảnh QR công ty"

@@ -51,10 +51,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Trợ lý giao hàng") {
-                NavigationLink("Liên hệ bán hàng / tài xế") { ContactsView(editable: true) }
-                NavigationLink("Dọn dẹp / đặt lại dữ liệu") { MaintenanceView() }
                 NavigationLink("Công đơn và QR công ty") { DeliverySettingsView() }
-                NavigationLink("Chấm công và lương") { PayrollView() }
                 NavigationLink("Gia hạn Sendeli") { RenewalView() }
                 NavigationLink("Nhận ảnh bằng Phím tắt") { SweepShortcutGuide() }
                 NavigationLink("Sao lưu và khôi phục sổ / ảnh") { DeliveryBackupView() }
