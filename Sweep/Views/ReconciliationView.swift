@@ -5,9 +5,6 @@ struct ReconciliationView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var month = DeliveryMonth.start(Date())
     @State private var observedMonth = DeliveryMonth.start(Date())
-    @State private var query = ""
-    @State private var accountantCount = ""
-    @State private var accountantAmount = ""
     @State private var handover = false
     @State private var sharing: DeliveryShare?
     private var summary: MonthlyReconciliation { MonthlyReconciliation(ledger: store.ledger, month: month) }
@@ -63,20 +60,9 @@ struct ReconciliationView: View {
                     } label: { LabeledContent(route.rawValue, value: "\(orders.count)") }
                 }
             }
-            Section { NavigationLink("Tất cả") { AllDeliveryOrdersView() }.accessibilityIdentifier("history.all") }
-            Section("Phiếu tính công · \(totals.count)") {
-                if totals.commissions.isEmpty { Text("Chưa có phiếu trong tháng.").foregroundStyle(.secondary) }
-                ForEach(totals.commissions.filter { query.isEmpty || ($0.0.customer + $0.0.code + $0.0.phone).localizedStandardContains(query) }, id: \.1.id) { order, assignment in
-                    NavigationLink { OrderDetailView(id: order.id) } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack { Text(order.customer); Spacer(); Text(VND.format(assignment.fee)) }
-                            Text("\(order.code) · \(assignment.signedAt.formatted(date: .numeric, time: .omitted)) · \(order.workflowStatus)").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
+            Section { NavigationLink("Tất cả") { AllDeliveryOrdersView() }.foregroundStyle(.blue).accessibilityIdentifier("history.all") }
         }
-        .navigationTitle("Lịch sử").searchable(text: $query, prompt: "Tên khách, mã phiếu, số điện thoại")
+        .navigationTitle("Lịch sử")
         .sheet(isPresented: $handover) { HandoverView() }
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
         .onAppear { rollMonthIfNeeded() }
@@ -86,12 +72,11 @@ struct ReconciliationView: View {
     }
     private func moveMonth(_ offset: Int) {
         month = DeliveryMonth.calendar.date(byAdding: .month, value: offset, to: month) ?? month
-        accountantCount = ""; accountantAmount = ""
     }
     private func rollMonthIfNeeded() {
         let now = Date()
         let next = DeliveryMonth.rollover(selected: month, observed: observedMonth, now: now)
-        if next != month { month = next; accountantCount = ""; accountantAmount = "" }
+        if next != month { month = next }
         observedMonth = DeliveryMonth.start(now)
     }
     private func exportMonth() {

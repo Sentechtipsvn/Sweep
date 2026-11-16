@@ -14,6 +14,7 @@ struct OrdersView: View {
     @State private var query = ""
     @State private var filter = "Đang giao"
     @State private var period = DeliveryPeriod.day
+    @State private var showWork = false
     @State private var newOrder = false
     @State private var savedOrder: UUID?
     private func visible(_ now: Date) -> [DeliveryOrder] {
@@ -29,28 +30,30 @@ struct OrdersView: View {
             TimelineView(.periodic(from: .now, by: 60)) { clock in
                 let orders = visible(clock.date)
                 let work = DeliveryWorkItem.items(store.ledger, now: clock.date)
-                let workCount = work.filter(\.actionable).count
                 List {
-                    SendeliSearchField(text: $query).listRowBackground(Color.clear)
+                    Section {
+                        VStack(spacing: 12) {
+                            SendeliSearchField(text: $query)
+                            HStack(spacing: 6) {
+                                ForEach(["Đang giao", "Đã giao"], id: \.self) { value in
+                                    Button(value) { filter = value }.buttonStyle(SweepPill(selected: filter == value)).accessibilityIdentifier("filter.\(value)")
+                                }
+                                if filter == "Đã giao" {
+                                    Menu { Picker("Thời gian giao", selection: $period) { ForEach(DeliveryPeriod.allCases, id: \.self) { Text($0.rawValue).tag($0) } } } label: { Image(systemName: "ellipsis").rotationEffect(.degrees(90)).frame(width: 30, height: 44) }
+                                        .accessibilityLabel("Lọc đơn đã giao")
+                                }
+                            }
+                            if filter == "Đã giao" {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack { Text(period.rawValue).foregroundStyle(.secondary); Spacer(minLength: 8); workButton(count: work.count) }
+                                    VStack(alignment: .trailing, spacing: 4) { Text(period.rawValue).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading); workButton(count: work.count) }
+                                }.font(.caption)
+                            }
+                        }.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    }.listRowBackground(Color.clear)
                     if !inbox.items.isEmpty { Section {
                         Button { sharedInbox = true } label: { Label("\(inbox.items.count) ảnh được chia sẻ · nhận đơn", systemImage: "tray.and.arrow.down.fill") }.accessibilityIdentifier("orders.shared")
                     } }
-                    if !work.isEmpty { Section {
-                        NavigationLink { DeliveryWorkView() } label: { Label(workCount > 0 ? "Còn \(workCount) việc cần xử lý" : "Bán hàng đang theo dõi \(work.count) đơn chành", systemImage: "checklist") }
-                            .accessibilityIdentifier("orders.work")
-                    } }
-                    Section {
-                        HStack(spacing: 6) {
-                            ForEach(["Đang giao", "Đã giao"], id: \.self) { value in
-                                Button(value) { filter = value }.buttonStyle(SweepPill(selected: filter == value)).accessibilityIdentifier("filter.\(value)")
-                            }
-                            if filter == "Đã giao" {
-                                Menu { Picker("Thời gian giao", selection: $period) { ForEach(DeliveryPeriod.allCases, id: \.self) { Text($0.rawValue).tag($0) } } } label: { Image(systemName: "ellipsis").rotationEffect(.degrees(90)).frame(width: 30, height: 44) }
-                                    .accessibilityLabel("Lọc đơn đã giao")
-                            }
-                        }
-                        if filter == "Đã giao" { Text(period.rawValue).font(.caption).foregroundStyle(.secondary) }
-                    }.listRowBackground(Color.clear)
                     if store.blocked { Text("Sổ đang chỉ đọc. Xem thông báo lỗi mở sổ.").foregroundStyle(.red) }
                     if orders.isEmpty {
                         VStack(spacing: 16) {
@@ -69,12 +72,20 @@ struct OrdersView: View {
             .navigationTitle("Đơn hàng")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) } }
             .navigationDestination(for: UUID.self) { OrderDetailView(id: $0) }
+            .navigationDestination(isPresented: $showWork) { DeliveryWorkView() }
             .sheet(isPresented: $newOrder, onDismiss: openSavedOrder) { OrderIntakeView { id in savedOrder = id; newOrder = false } }
             .sheet(isPresented: $sharedInbox, onDismiss: openSavedOrder) { SharedInboxView(inbox: inbox) { id in savedOrder = id; sharedInbox = false } }
             .task { await refreshInbox(); if let id = router.orderID, store.order(id) != nil { path = [id]; router.orderID = nil } }
             .onReceive(NotificationCenter.default.publisher(for: .sweepInboxReceived)) { _ in Task { await refreshInbox() } }
             .onChange(of: router.orderID) { _, id in if let id, store.order(id) != nil { path = [id]; router.orderID = nil } }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refreshInbox() } } }
+        }
+    }
+    @ViewBuilder private func workButton(count: Int) -> some View {
+        if count > 0 {
+            Button("Còn \(count) việc cần xử lý") { showWork = true }
+                .buttonStyle(.borderless).foregroundStyle(.blue)
+                .accessibilityIdentifier("orders.work")
         }
     }
     private func refreshInbox() async {

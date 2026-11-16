@@ -28,6 +28,28 @@ extension DeliveryStore {
 }
 
 extension DeliveryStore {
+    func installReminderUITestFixture() {
+        guard ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing"),
+              let first = ledger.orders.first, first.settlement == nil,
+              let invoice = first.evidence.first else { return }
+        _ = change { ledger in
+            var freight = DeliveryOrder(code: "TEST-FREIGHT", customer: "Khách giao chành", total: 1_500_000)
+            freight.evidence = [try EvidenceFiles.importImage(url(invoice), role: .invoice, directory: evidenceDirectory)]
+            let freightID = try ledger.insert(freight)
+            for (id, route) in [(first.id, DeliveryRoute.transferLater), (freightID, .freight)] {
+                let index = ledger.orders.firstIndex { $0.id == id }!
+                for role in [EvidenceRole.signature, .freightSignature, .goods] where !ledger.orders[index].activeEvidence.contains(where: { $0.role == role }) {
+                    ledger.orders[index].evidence.append(try EvidenceFiles.importImage(url(invoice), role: role, directory: evidenceDirectory))
+                }
+                try ledger.sign(id, at: Date())
+                try ledger.settle(id, value: Settlement(outcome: .delivered, mode: .deferred, cash: 0, bank: 0, note: "", at: Date(), route: route))
+                let order = ledger.orders[index]
+                let report = try ledger.prepareReport(id, text: order.shareText(), evidenceIDs: order.defaultShareEvidenceIDs)
+                try ledger.acknowledgeReport(id, reportID: report.id)
+            }
+            try ledger.markAttendance(Date(), state: .work)
+        }
+    }
     func installMonthlyUITestFixture() {
         guard ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing"), let order = ledger.orders.first, order.settlement == nil else { return }
         _ = change { ledger in
