@@ -205,7 +205,7 @@ extension DeliveryStore {
         do {
             let folder = backupFolder.resolvingSymlinksInPath().standardizedFileURL.path
             let protected = documents.resolvingSymlinksInPath().standardizedFileURL.path
-            guard folder != protected, !folder.hasPrefix(protected + "/"), !folder.hasPrefix(root.path) else { throw DeliveryError.invalid("Chọn iCloud Drive hoặc thư mục ngoài Sweep để giữ bản sao.") }
+            guard folder != protected, !folder.hasPrefix(protected + "/"), !folder.hasPrefix(root.path) else { throw DeliveryError.invalid("Chọn iCloud Drive hoặc thư mục ngoài Sendeli để giữ bản sao.") }
             let snapshot = ledger, dir = evidenceDirectory
             let pendingInbox = try? SharedInvoiceInbox.live()
             let pendingScan = try (reset ? pendingInbox?.scan() : nil)

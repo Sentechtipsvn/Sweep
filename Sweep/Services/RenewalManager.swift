@@ -73,15 +73,15 @@ final class RenewalManager: NSObject, ObservableObject, UNUserNotificationCenter
             for date in dates {
                 guard request == generation else { return }
                 let content = UNMutableNotificationContent()
-                content.title = date < expiry ? "Sweep sắp hết hạn ký" : "Kiểm tra gia hạn Sweep"
-                content.body = "Hạn ký: \(expiry.formatted(date: .numeric, time: .shortened)). Gia hạn bằng công cụ ký, sau đó mở Sweep để cập nhật hạn."
+                content.title = date < expiry ? "Sendeli sắp hết hạn ký" : "Kiểm tra gia hạn Sendeli"
+                content.body = "Hạn ký: \(expiry.formatted(date: .numeric, time: .shortened)). Gia hạn bằng công cụ ký, sau đó mở Sendeli để cập nhật hạn."
                 content.sound = .default
                 content.userInfo = ["route": "renewal"]
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, date.timeIntervalSinceNow), repeats: false)
                 let id = "sweep.renewal.\(Int(expiry.timeIntervalSince1970)).\(Int(date.timeIntervalSince1970))"
                 try await center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
             }
-            if request == generation { status = "Đã đặt lịch từ 24 giờ trước hạn, mỗi 3 giờ. Mở lại Sweep sau khi gia hạn để hủy lịch cũ." }
+            if request == generation { status = "Đã đặt lịch từ 24 giờ trước hạn, mỗi 3 giờ. Mở lại Sendeli sau khi gia hạn để hủy lịch cũ." }
         } catch { if request == generation { status = "Chưa đặt đủ thông báo: " + error.localizedDescription } }
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -91,6 +91,9 @@ final class RenewalManager: NSObject, ObservableObject, UNUserNotificationCenter
         if response.notification.request.content.userInfo["route"] as? String == "renewal" {
             Task { @MainActor in NotificationCenter.default.post(name: .sweepRenewalSelected, object: nil) }
         }
+        if response.notification.request.content.userInfo["route"] as? String == "attendance" {
+            Task { @MainActor in NotificationCenter.default.post(name: .sendeliAttendanceSelected, object: nil) }
+        }
         completionHandler()
     }
 }
@@ -99,7 +102,7 @@ struct RenewalView: View {
     @State private var manual = Date().addingTimeInterval(24 * 3600)
     var body: some View {
         Form {
-            Section("Hạn bản Sweep đang cài") {
+            Section("Hạn bản Sendeli đang cài") {
                 if let expiry = renewal.expiry {
                     Text(expiry.formatted(date: .complete, time: .shortened)).font(.headline)
                     Text(expiry > Date() ? "Còn \(max(0, Int(expiry.timeIntervalSinceNow / 3600))) giờ" : "Hạn đã qua; kiểm tra công cụ ký.").foregroundStyle(expiry > Date() ? Color.secondary : Color.red)
@@ -108,7 +111,7 @@ struct RenewalView: View {
                 Button("Kiểm tra lại hạn ký") { Task { await renewal.refresh() } }
             }
             Section {
-                Toggle("Nhắc gia hạn Sweep", isOn: Binding(get: { renewal.enabled }, set: { value in Task { await renewal.setEnabled(value) } }))
+                Toggle("Nhắc gia hạn Sendeli", isOn: Binding(get: { renewal.enabled }, set: { value in Task { await renewal.setEnabled(value) } }))
                 Text(renewal.status).font(.footnote).foregroundStyle(.secondary)
             }
             if renewal.source != "Hồ sơ ký của bản đang cài" {
@@ -120,9 +123,9 @@ struct RenewalView: View {
             }
             Section {
                 Button("Mở cài đặt thông báo") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
-                Text("Sau khi refresh/ký lại, mở Sweep để nhận hạn mới và hủy nhắc cũ. Thông báo phụ thuộc quyền iOS/Focus; không bảo đảm phát khi app đã hết hạn. Lịch đặt theo từng lô, bổ sung khi mở app.").font(.footnote).foregroundStyle(.secondary)
+                Text("Sau khi refresh/ký lại, mở Sendeli để nhận hạn mới và hủy nhắc cũ. Thông báo phụ thuộc quyền iOS/Focus; không bảo đảm phát khi app đã hết hạn. Lịch đặt theo từng lô, bổ sung khi mở app.").font(.footnote).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Gia hạn Sweep").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Gia hạn Sendeli").navigationBarTitleDisplayMode(.inline)
             .task { await renewal.refresh(); if let value = renewal.expiry { manual = value } }
     }
 }

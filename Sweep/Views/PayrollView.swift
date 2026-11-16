@@ -358,8 +358,8 @@ private struct PayrollConfigurationView: View {
                 Text("Nhập đúng giá có hiệu lực ngày chốt, không lấy giá hôm nay thay tháng cũ. Tự động lấy giá chưa được bật.").font(.footnote).foregroundStyle(.secondary)
             }
             SweepCard(title: "Phép năm và điều chỉnh") {
-                TextField("Phép đã dùng trước dữ liệu công trong Sweep", text: $leave).keyboardType(.decimalPad)
-                Text("Số ngày nghỉ không lương đã dùng trong năm ngoài các ngày đã chấm trong Sweep. Hạn mức 12 ngày.").font(.footnote).foregroundStyle(.secondary)
+                TextField("Phép đã dùng trước dữ liệu công trong Sendeli", text: $leave).keyboardType(.decimalPad)
+                Text("Số ngày nghỉ không lương đã dùng trong năm ngoài các ngày đã chấm trong Sendeli. Hạn mức 12 ngày.").font(.footnote).foregroundStyle(.secondary)
                 TextField("Điều chỉnh lương, số âm để trừ", text: $adjustment).keyboardType(.numbersAndPunctuation)
                 TextField("Lý do điều chỉnh", text: $period.adjustmentReason)
             }

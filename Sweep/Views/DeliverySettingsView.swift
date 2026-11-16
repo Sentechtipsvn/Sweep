@@ -79,7 +79,7 @@ struct DeliveryBackupView: View {
                     Text("Đã kiểm tra \(prepared.ledger.orders.count) hồ sơ và \(prepared.ledger.allEvidence.count) ảnh, đúng hash.")
                     Button("Thay sổ hiện tại bằng bản đã kiểm tra…", role: .destructive) { confirm = true }
                 }
-                Text("Khôi phục thay toàn bộ sổ, không gộp hai sổ. Sweep giữ một bản trước khôi phục trên máy; ảnh thiếu hoặc sai hash sẽ bị từ chối trước khi thay dữ liệu.").font(.caption).foregroundStyle(.secondary)
+                Text("Khôi phục thay toàn bộ sổ, không gộp hai sổ. Sendeli giữ một bản trước khôi phục trên máy; ảnh thiếu hoặc sai hash sẽ bị từ chối trước khi thay dữ liệu.").font(.caption).foregroundStyle(.secondary)
             }
             if !recoveries.isEmpty {
                 Section("Bản giữ trước các lần khôi phục") {

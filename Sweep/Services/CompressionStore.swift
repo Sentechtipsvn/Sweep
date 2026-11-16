@@ -91,7 +91,7 @@ final class CompressionStore: ObservableObject {
         Task {
             let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
             guard status == .authorized || status == .limited else {
-                message = "Sếp cần cho Sweep quyền thêm ảnh trong Cài đặt để lưu bản nén."; busy = false; return
+                message = "Sếp cần cho Sendeli quyền thêm ảnh trong Cài đặt để lưu bản nén."; busy = false; return
             }
             do {
                 try await PHPhotoLibrary.shared().performChanges {

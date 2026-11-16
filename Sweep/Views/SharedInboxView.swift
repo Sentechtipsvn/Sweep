@@ -67,7 +67,7 @@ struct SharedInboxView: View {
             .alert("Xóa ảnh chờ nhận?", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } })) {
                 Button("Xóa ảnh chờ", role: .destructive) { if let item = discarding { Task { _ = await inbox.remove(item) } }; discarding = nil }
                 Button("Giữ lại", role: .cancel) { discarding = nil }
-            } message: { Text("Chỉ bỏ ảnh trong hộp thư Sweep. Đơn đã nhập và ảnh gốc trong Zalo không bị thay đổi.") }
+            } message: { Text("Chỉ bỏ ảnh trong hộp thư Sendeli. Đơn đã nhập và ảnh gốc trong Zalo không bị thay đổi.") }
             .background(SweepAppearanceAction {
                 guard !autoOpened else { return }; autoOpened = true
                 if inbox.items.count == 1 { selected = inbox.items.first }

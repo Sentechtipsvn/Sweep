@@ -67,8 +67,8 @@ struct DeliveryFlowView: View {
                             if order.total <= 0 { Text("Kiểm tra tổng tiền trong Sửa đơn trước khi chốt.").foregroundStyle(.red) }
                             if method == .cash {
                                 SweepCard {
-                                    Button("Thu đủ tiền mặt") { if canStartCash(order) { confirmation = .cash } }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.cashFull")
-                                    Button("Thu một phần") { if canStartCash(order) { partial = String(order.cash); stage = .partial } }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.partial")
+                                    Button("Thu đủ tiền mặt") { if canStartCash(order) { confirmation = .cash } }.buttonStyle(SendeliPill(selected: true)).accessibilityIdentifier("flow.cashFull")
+                                    Button("Thu một phần") { if canStartCash(order) { partial = String(order.cash); stage = .partial } }.buttonStyle(SendeliPill()).accessibilityIdentifier("flow.partial")
                                 }
                                 if stage == .partial {
                                     SweepCard(title: "Tiền mặt thực nhận") {
@@ -80,14 +80,14 @@ struct DeliveryFlowView: View {
                                 }
                             } else if method == .bank {
                                 SweepCard {
-                                    Button(order.remaining > 0 ? "Chuyển khoản ngay" : "Xem lại QR chuyển khoản") { stage = .qr }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.bankNow")
-                                    Button("Chuyển khoản sau…") { requestLater(order) }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.bankLater")
+                                    Button(order.remaining > 0 ? "Chuyển khoản ngay" : "Xem lại QR chuyển khoản") { stage = .qr }.buttonStyle(SendeliPill(selected: true)).accessibilityIdentifier("flow.bankNow")
+                                    Button("Chuyển khoản sau…") { requestLater(order) }.buttonStyle(SendeliPill()).accessibilityIdentifier("flow.bankLater")
                                     if order.bank > 0 { Button("Tiếp tục gửi chứng từ") { stage = .proof }.buttonStyle(SweepPill()) }
                                 }
                             } else {
                                 SweepCard {
                                     Text("Gửi phiếu nhà xe đã ký và ảnh hàng đã gửi. Bán hàng theo dõi tiền.").font(.subheadline)
-                                    Button("Đã giao hàng cho chành…") { requestFreight(order) }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.freight")
+                                    Button("Đã giao hàng cho chành…") { requestFreight(order) }.buttonStyle(SendeliPill(selected: true)).accessibilityIdentifier("flow.freight")
                                 }
                             }
                             SweepCard { Button("Huỷ", role: .cancel) { dismiss() } }

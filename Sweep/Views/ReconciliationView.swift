@@ -63,6 +63,7 @@ struct ReconciliationView: View {
                     } label: { LabeledContent(route.rawValue, value: "\(orders.count)") }
                 }
             }
+            Section { NavigationLink("Tất cả") { AllDeliveryOrdersView() }.accessibilityIdentifier("history.all") }
             Section("Phiếu tính công · \(totals.count)") {
                 if totals.commissions.isEmpty { Text("Chưa có phiếu trong tháng.").foregroundStyle(.secondary) }
                 ForEach(totals.commissions.filter { query.isEmpty || ($0.0.customer + $0.0.code + $0.0.phone).localizedStandardContains(query) }, id: \.1.id) { order, assignment in
@@ -122,7 +123,7 @@ private struct HandoverCorrectionView: View {
     }
 }
 
-private struct HandoverView: View {
+struct HandoverView: View {
     @EnvironmentObject private var store: DeliveryStore
     @Environment(\.dismiss) private var dismiss
     @State private var amount = ""

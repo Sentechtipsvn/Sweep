@@ -24,7 +24,7 @@ struct DeliveryFeedback: UIViewControllerRepresentable {
             guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
                   var top = scene.windows.first(where: \.isKeyWindow)?.rootViewController else { coordinator.showing = false; return }
             while let presented = top.presentedViewController { top = presented }
-            let alert = UIAlertController(title: "Sweep", message: message, preferredStyle: .alert)
+            let alert = UIAlertController(title: "Sendeli", message: message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Đã hiểu", style: .default) { _ in store.message = nil; coordinator.showing = false })
             top.present(alert, animated: true)
         }

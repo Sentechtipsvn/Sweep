@@ -71,8 +71,8 @@ struct SweepCallButton: View {
     var body: some View {
         if let url = URL(string: "tel:" + phone.filter { $0.isNumber || $0 == "+" }), !phone.isEmpty {
             Link(destination: url) {
-                Text("Gọi").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(red: 0.03, green: 0.18, blue: 0.09))
-                    .frame(width: 52, height: 52).background(SweepStyle.green, in: Circle())
+                Image(systemName: "phone.fill").font(.system(size: 20)).foregroundStyle(.blue)
+                    .frame(width: 44, height: 44)
             }.buttonStyle(.plain).accessibilityLabel("Gọi " + phone).accessibilityIdentifier("contact.call")
         }
     }

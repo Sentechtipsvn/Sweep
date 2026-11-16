@@ -40,11 +40,11 @@ struct CompressionView: View {
                 if store.busy { ProgressView("Đang xử lý…").frame(maxWidth: .infinity) }
                 if let output = store.output {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("\(SweepFormat.bytes(output.sourceBytes)) → \(SweepFormat.bytes(output.outputBytes))")
+                        Text("\(SendeliFormat.bytes(output.sourceBytes)) → \(SendeliFormat.bytes(output.outputBytes))")
                             .font(.title3.bold()).monospacedDigit()
                         Text("JPEG · \(output.width) × \(output.height)").font(.caption).foregroundStyle(.secondary)
                         if output.savedBytes > 0 {
-                            Text("Bản mới nhỏ hơn \(SweepFormat.bytes(output.savedBytes)). Đây chưa phải dung lượng đã giải phóng trên máy.")
+                            Text("Bản mới nhỏ hơn \(SendeliFormat.bytes(output.savedBytes)). Đây chưa phải dung lượng đã giải phóng trên máy.")
                                 .font(.footnote).foregroundStyle(.green)
                         } else {
                             Text("Bản mới không nhỏ hơn ảnh đầu vào. Sếp cân nhắc giảm kích thước/chất lượng hoặc giữ ảnh cũ.")
@@ -59,7 +59,7 @@ struct CompressionView: View {
                 }
                 Text("Bản đầu xử lý từng ảnh tĩnh JPEG/PNG/HEIC, tối đa 80 MB và 120 megapixel. Kết quả là JPEG mới: xoay đúng chiều, bỏ GPS/EXIF; vùng trong suốt thành trắng. Không giữ Live Photo, HDR, RAW hay lịch sử chỉnh sửa. Chữ nhỏ có thể mất nét khi nén; Sếp xem thử trước khi dùng cho hóa đơn.")
                     .font(.footnote).foregroundStyle(.secondary)
-                Text("Chọn ảnh từ iCloud có thể tải bản gốc về máy. Sweep không tự xóa ảnh gốc sau khi nén.")
+                Text("Chọn ảnh từ iCloud có thể tải bản gốc về máy. Sendeli không tự xóa ảnh gốc sau khi nén.")
                     .font(.footnote).foregroundStyle(.secondary)
             }.padding(20).frame(maxWidth: 700).frame(maxWidth: .infinity)
         }
@@ -81,7 +81,7 @@ struct CompressionView: View {
             preview = result
         }
         .onChange(of: store.source?.url) { _, _ in showOriginal = false }
-        .alert("Sweep", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
+        .alert("Sendeli", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
             Button("Đã hiểu") { store.message = nil }
         } message: { Text(store.message ?? "") }
     }

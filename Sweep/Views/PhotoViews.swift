@@ -72,7 +72,7 @@ struct LibraryView: View {
         List {
             if !library.canRead {
                 Section {
-                    ContentUnavailableView("Cho Sweep xem ảnh", systemImage: "photo.on.rectangle",
+                    ContentUnavailableView("Cho Sendeli xem ảnh", systemImage: "photo.on.rectangle",
                         description: Text("Sếp có thể cấp một phần thư viện hoặc toàn bộ ảnh. Chỉ những ảnh được cấp quyền mới được quét."))
                     Button("Cho phép truy cập ảnh") { library.authorizeAndLoad() }.disabled(library.busy)
                     Button("Mở Cài đặt") {
@@ -158,7 +158,7 @@ struct LibraryView: View {
             Text("Ảnh sẽ vào Đã xóa gần đây. Nếu bật iCloud Photos, ảnh cũng bị xóa trên những thiết bị đồng bộ. Dung lượng không nhất thiết được giải phóng ngay.")
         }
         .sheet(item: $preview) { PhotoPreview(photo: $0) }
-        .alert("Sweep", isPresented: Binding(get: { library.message != nil }, set: { if !$0 { library.message = nil } })) {
+        .alert("Sendeli", isPresented: Binding(get: { library.message != nil }, set: { if !$0 { library.message = nil } })) {
             Button("Đã hiểu") { library.message = nil }
         } message: { Text(library.message ?? "") }
         .onChange(of: library.photos) { _, _ in selected = [] }

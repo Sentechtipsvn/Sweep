@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-    <key>CFBundleDisplayName</key><string>Sweep</string>
+    <key>CFBundleDisplayName</key><string>Sendeli</string>
     <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.sentechtipsvn.sweep</string><key>CFBundleURLSchemes</key><array><string>sweep</string></array></dict></array>
     <key>SweepAppGroupIdentifier</key><string>$(SWEEP_APP_GROUP)</string>
     <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
@@ -14,7 +14,7 @@
     <key>LSApplicationQueriesSchemes</key><array><string>comgooglemaps</string></array>
     <key>UIFileSharingEnabled</key><true/>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
-    <key>NSLocationWhenInUseUsageDescription</key><string>Sweep lưu vị trí giao hàng khi Sếp chọn Lấy vị trí hiện tại.</string>
+    <key>NSLocationWhenInUseUsageDescription</key><string>Sendeli lưu vị trí giao hàng khi Sếp chọn Lấy vị trí hiện tại.</string>
     <key>UILaunchScreen</key><dict/>
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UISupportedInterfaceOrientations</key><array>
@@ -23,9 +23,9 @@
     <key>UISupportedInterfaceOrientations~ipad</key><array>
         <string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string>
     </array>
-    <key>NSPhotoLibraryUsageDescription</key><string>Sweep đọc những ảnh Sếp cho phép để tìm bản trùng, xem ảnh chụp màn hình và xóa các ảnh Sếp xác nhận.</string>
-    <key>NSPhotoLibraryAddUsageDescription</key><string>Sweep lưu bản ảnh đã nén vào thư viện khi Sếp chọn Lưu ảnh.</string>
-    <key>NSCameraUsageDescription</key><string>Sweep chụp phiếu đơn hàng, phiếu khách ký hoặc ảnh giao dịch khi Sếp chọn Chụp.</string>
+    <key>NSPhotoLibraryUsageDescription</key><string>Sendeli đọc những ảnh Sếp cho phép để tìm bản trùng, xem ảnh chụp màn hình và xóa các ảnh Sếp xác nhận.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key><string>Sendeli lưu bản ảnh đã nén vào thư viện khi Sếp chọn Lưu ảnh.</string>
+    <key>NSCameraUsageDescription</key><string>Sendeli chụp phiếu đơn hàng, phiếu khách ký hoặc ảnh giao dịch khi Sếp chọn Chụp.</string>
     <key>CFBundleLocalizations</key><array><string>vi</string></array>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict></plist>

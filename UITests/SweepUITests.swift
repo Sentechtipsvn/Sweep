@@ -1,11 +1,49 @@
 import XCTest
 
 final class SweepUITests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        addUIInterruptionMonitor(withDescription: "Quyền thông báo") { alert in
+            for title in ["Allow", "Cho phép"] where alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            return false
+        }
+    }
+    func testSendeliTwoTabsHistoryAndSearch() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery"]
+        app.launch()
+        XCTAssertTrue(app.buttons["filter.Đang giao"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["filter.Đã giao"].exists)
+        XCTAssertFalse(app.buttons["filter.Tất cả"].exists); XCTAssertFalse(app.buttons["orders.receive"].exists); XCTAssertFalse(app.buttons["orders.bill"].exists)
+        app.buttons["filter.Đã giao"].tap()
+        XCTAssertTrue(app.staticTexts["orders.count"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Lịch sử"].tap()
+        reveal(app.buttons["history.all"], in: app); app.buttons["history.all"].tap()
+        XCTAssertTrue(app.buttons["order.TEST-001"].waitForExistence(timeout: 10))
+        let search = app.textFields["orders.search"]; search.tap(); search.typeText("TEST-001")
+        XCTAssertTrue(app.buttons["order.TEST-001"].exists)
+        attach(app, name: "sendeli-history-all-and-search")
+    }
+    func testSendeliWorkCardAndCompactDirectories() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--update02-ui-testing", "--monthly-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["orders.work"].waitForExistence(timeout: 20)); app.buttons["orders.work"].tap()
+        XCTAssertTrue(app.navigationBars["Việc cần chốt"].waitForExistence(timeout: 10))
+        attach(app, name: "sendeli-worklist")
+        app.tabBars.buttons["Công cụ"].tap(); app.buttons["tool.contacts"].tap()
+        XCTAssertTrue(app.buttons["contact.call"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["contact.zalo"].firstMatch.exists)
+        attach(app, name: "sendeli-compact-contacts")
+    }
     func testProductionZEffectsCashCompletionPersistsWithoutReplay() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN"]
         app.launch()
+        openAllHistory(app)
         let row = app.buttons["order.REPLAY-FREIGHT"]
         XCTAssertTrue(row.waitForExistence(timeout: 20)); row.tap()
         reveal(app.buttons["method.Tiền mặt"], in: app); tapPillBackground(app.buttons["method.Tiền mặt"])
@@ -15,6 +53,7 @@ final class SweepUITests: XCTestCase {
         if app.alerts["Lưu vị trí giao hàng?"].waitForExistence(timeout: 3) { app.alerts.buttons["Để sau"].tap() }
         attach(app, name: "production-effects-completed-cash-order")
         app.terminate(); app.launch()
+        openAllHistory(app)
         XCTAssertTrue(app.buttons["order.REPLAY-FREIGHT"].waitForExistence(timeout: 20))
         XCTAssertFalse(app.images["feedback.celebration"].exists)
         XCTAssertFalse(app.staticTexts["feedback.toast"].exists)
@@ -537,6 +576,11 @@ final class SweepUITests: XCTestCase {
         attach(app, name: "approved-seven-svg-tools")
         app.buttons["Dọn dẹp"].tap(); XCTAssertTrue(app.buttons["maintenance.reset"].waitForExistence(timeout: 10))
         attach(app, name: "approved-maintenance-backup-before-reset")
+    }
+
+    private func openAllHistory(_ app: XCUIApplication) {
+        app.tabBars.buttons["Lịch sử"].tap()
+        let all = app.buttons["history.all"]; reveal(all, in: app); all.tap()
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {

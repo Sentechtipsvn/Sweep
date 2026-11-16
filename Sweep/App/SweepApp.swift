@@ -6,6 +6,7 @@ struct SweepApp: App {
     @StateObject private var delivery = DeliveryStore()
     @StateObject private var router = SweepRouter()
     @StateObject private var renewal = RenewalManager()
+    @StateObject private var attendance = AttendanceReminderManager()
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
@@ -23,10 +24,14 @@ struct SweepApp: App {
             .environmentObject(delivery)
             .environmentObject(router)
             .environmentObject(renewal)
+            .environmentObject(attendance)
             .onOpenURL { router.open($0) }
             .onReceive(NotificationCenter.default.publisher(for: .sweepInboxReceived)) { _ in router.tab = 0 }
             .onReceive(NotificationCenter.default.publisher(for: .sweepRenewalSelected)) { _ in router.tab = 3; router.settings = ["renewal"] }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await renewal.refresh() } } }
+            .onReceive(NotificationCenter.default.publisher(for: .sendeliAttendanceSelected)) { _ in router.tab = 2; router.tools = ["payroll"] }
+            .onChange(of: delivery.ledger.payroll) { _, _ in Task { await attendance.refresh(delivery.ledger) } }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in Task { await attendance.refresh(delivery.ledger) } }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await renewal.refresh(); await attendance.refresh(delivery.ledger) } } }
             .background(DeliveryFeedback(store: delivery).frame(width: 0, height: 0))
             .task {
                 #if DEBUG
@@ -37,6 +42,11 @@ struct SweepApp: App {
                 #endif
                 if library.canRead { library.reload() }
                 await renewal.refresh()
+                var requestAttendancePermission = true
+                #if DEBUG
+                if NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil || ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing") { requestAttendancePermission = false }
+                #endif
+                await attendance.refresh(delivery.ledger, requestPermission: requestAttendancePermission)
             }
         }
     }

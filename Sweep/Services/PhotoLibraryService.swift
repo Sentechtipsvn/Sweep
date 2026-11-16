@@ -110,7 +110,7 @@ enum PhotoLibraryService {
     static func delete(ids: Set<String>) async throws {
         let fetched = PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: nil)
         guard fetched.count == ids.count else {
-            throw NSError(domain: "Sweep", code: 1, userInfo: [NSLocalizedDescriptionKey:
+            throw NSError(domain: "Sendeli", code: 1, userInfo: [NSLocalizedDescriptionKey:
                 "Thư viện đã thay đổi. Sếp tải lại danh sách rồi chọn ảnh giúp em nhé."])
         }
         try await PHPhotoLibrary.shared().performChanges { PHAssetChangeRequest.deleteAssets(fetched) }
