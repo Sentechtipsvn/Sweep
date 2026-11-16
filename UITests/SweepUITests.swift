@@ -33,10 +33,14 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(app.buttons["orders.work"].waitForExistence(timeout: 20)); app.buttons["orders.work"].tap()
         XCTAssertTrue(app.navigationBars["Việc cần chốt"].waitForExistence(timeout: 10))
         attach(app, name: "sendeli-worklist")
-        app.tabBars.buttons["Công cụ"].tap(); app.buttons["tool.contacts"].tap()
+        app.tabBars.buttons["Công cụ"].tap(); app.buttons["Liên hệ"].tap()
         XCTAssertTrue(app.buttons["contact.call"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["contact.zalo"].firstMatch.exists)
         attach(app, name: "sendeli-compact-contacts")
+        app.navigationBars.buttons["Công cụ"].tap(); app.buttons["Vị trí"].tap()
+        XCTAssertTrue(app.buttons["Điều hướng Google Maps"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["contact.call"].firstMatch.exists)
+        attach(app, name: "sendeli-compact-places")
     }
     func testProductionZEffectsCashCompletionPersistsWithoutReplay() throws {
         continueAfterFailure = false
