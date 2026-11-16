@@ -12,92 +12,68 @@ struct OrdersView: View {
     @State private var inboxRefreshRequested = false
     @State private var path: [UUID] = []
     @State private var query = ""
-    @State private var filter = "Tất cả"
-    @State private var allDates = true
-    @State private var day = Date()
+    @State private var filter = "Đang giao"
+    @State private var period = DeliveryPeriod.day
     @State private var newOrder = false
-    @State private var bill = false
     @State private var savedOrder: UUID?
-    private var visible: [DeliveryOrder] {
+    private func visible(_ now: Date) -> [DeliveryOrder] {
         store.ledger.orders.filter { order in
             let matches = query.isEmpty || (order.customer + " " + order.code + " " + order.phone).localizedStandardContains(query)
-            let dateOK = allDates || Calendar.current.isDate(order.importedAt, inSameDayAs: day)
-            let statusOK = filter == "Tất cả" || (filter == "Đang giao" && order.outcome != .delivered && order.voidReason == nil) || (filter == "Đã giao" && order.outcome == .delivered && order.voidReason == nil)
-            return matches && dateOK && statusOK
-        }.sorted { $0.importedAt > $1.importedAt }
+            return matches && order.voidReason == nil && (filter == "Đang giao" ? order.outcome != .delivered : period.contains(order, now: now))
+        }.sorted {
+            (filter == "Đã giao" ? ($0.firstDeliveredAt ?? $0.importedAt) : $0.importedAt) > (filter == "Đã giao" ? ($1.firstDeliveredAt ?? $1.importedAt) : $1.importedAt)
+        }
     }
     var body: some View {
         NavigationStack(path: $path) {
-            List {
-                if !inbox.items.isEmpty {
-                    Section {
+            TimelineView(.periodic(from: .now, by: 60)) { clock in
+                let orders = visible(clock.date)
+                let work = DeliveryWorkItem.items(store.ledger, now: clock.date)
+                let workCount = work.filter(\.actionable).count
+                List {
+                    SendeliSearchField(text: $query).listRowBackground(Color.clear)
+                    if !inbox.items.isEmpty { Section {
                         Button { sharedInbox = true } label: { Label("\(inbox.items.count) ảnh được chia sẻ · nhận đơn", systemImage: "tray.and.arrow.down.fill") }.accessibilityIdentifier("orders.shared")
+                    } }
+                    if !work.isEmpty { Section {
+                        NavigationLink { DeliveryWorkView() } label: { Label(workCount > 0 ? "Còn \(workCount) việc cần xử lý" : "Bán hàng đang theo dõi \(work.count) đơn chành", systemImage: "checklist") }
+                            .accessibilityIdentifier("orders.work")
+                    } }
+                    Section {
+                        HStack(spacing: 6) {
+                            ForEach(["Đang giao", "Đã giao"], id: \.self) { value in
+                                Button(value) { filter = value }.buttonStyle(SweepPill(selected: filter == value)).accessibilityIdentifier("filter.\(value)")
+                            }
+                            if filter == "Đã giao" {
+                                Menu { Picker("Thời gian giao", selection: $period) { ForEach(DeliveryPeriod.allCases, id: \.self) { Text($0.rawValue).tag($0) } } } label: { Image(systemName: "ellipsis").rotationEffect(.degrees(90)).frame(width: 30, height: 44) }
+                                    .accessibilityLabel("Lọc đơn đã giao")
+                            }
+                        }
+                        if filter == "Đã giao" { Text(period.rawValue).font(.caption).foregroundStyle(.secondary) }
+                    }.listRowBackground(Color.clear)
+                    if store.blocked { Text("Sổ đang chỉ đọc. Xem thông báo lỗi mở sổ.").foregroundStyle(.red) }
+                    if orders.isEmpty {
+                        VStack(spacing: 16) {
+                            Text(query.isEmpty ? "Chưa có đơn trong danh sách này" : "Không tìm thấy đơn").foregroundStyle(.secondary)
+                            if filter == "Đang giao" { Button("Chọn ảnh đơn hàng") { newOrder = true }.buttonStyle(SweepPill(selected: true)) }
+                        }.frame(maxWidth: .infinity).padding(.vertical, 20)
+                    }
+                    ForEach(orders) { order in
+                        NavigationLink(value: order.id) { SendeliOrderRow(order: order) }.accessibilityIdentifier("order.\(order.code)")
                     }
                 }
-                Section {
-                    HStack(spacing: 6) {
-                        ForEach(["Tất cả", "Đang giao", "Đã giao"], id: \.self) { value in
-                            Button { filter = value } label: {
-                                HStack(spacing: 4) {
-                                    Text(value).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
-                                    if value == "Đang giao", store.ledger.orders.contains(where: { $0.outcome != .delivered && $0.voidReason == nil }) { Circle().fill(SweepStyle.green).frame(width: 5, height: 5) }
-                                }
-                            }.buttonStyle(SweepPill(selected: filter == value)).accessibilityIdentifier("filter.\(value)")
-                        }
-                        Menu { Toggle("Mọi ngày", isOn: $allDates) } label: { Image(systemName: "ellipsis").rotationEffect(.degrees(90)).frame(width: 24, height: 44) }.accessibilityLabel("Tuỳ chọn ngày")
-                    }.listRowBackground(Color.clear)
-                    if !allDates { DatePicker("Ngày nhập", selection: $day, displayedComponents: .date) }
-
-                }
-                if store.blocked { Text("Sổ chưa mở được. Dữ liệu cũ được giữ nguyên; xem thông báo lỗi.").foregroundStyle(.red) }
-                else if visible.isEmpty {
-                    VStack(spacing: 16) {
-                        Label(query.isEmpty ? "Chưa có đơn đã lưu" : "Không tìm thấy đơn", systemImage: "shippingbox").font(.headline)
-                        Button("Chọn ảnh đơn hàng") { newOrder = true }.buttonStyle(.borderedProminent)
-                        Button("Nhập đơn từ Bill") { bill = true }.buttonStyle(.borderedProminent)
-                    }.frame(maxWidth: .infinity).padding(.vertical, 28)
-                }
-                ForEach(visible) { order in
-                    NavigationLink(value: order.id) {
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack { Text(order.customer).font(.headline); Spacer(); Text(VND.format(order.total)).font(.subheadline.bold()).monospacedDigit() }
-                            Text(order.code).font(.caption).foregroundStyle(.secondary)
-                            HStack {
-                                SweepOrderStatus(order: order)
-                                Spacer()
-                                if !order.activeAssignments.isEmpty { Label("Đã tính công", systemImage: "checkmark.seal.fill").foregroundStyle(.green) }
-                                else { Text("Chưa tính công").foregroundStyle(.secondary) }
-                            }.font(.caption)
-                            if order.remaining > 0 && !order.taskComplete { Text("Chưa thu \(VND.format(order.remaining))").font(.caption).foregroundStyle(.orange) }
-
-                            if !order.reviewNote.isEmpty { Label("Cần rà soát dữ liệu cũ", systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) }
-                        }.padding(.vertical, 6)
-                    }.accessibilityIdentifier("order.\(order.code)")
+                .safeAreaInset(edge: .bottom) {
+                    if filter == "Đã giao" { Text("\(orders.count) đơn").font(.system(size: 16)).frame(maxWidth: .infinity).padding(.vertical, 7).background(.bar).accessibilityIdentifier("orders.count") }
                 }
             }
             .navigationTitle("Đơn hàng")
-            .searchable(text: $query, prompt: "Tên khách, mã phiếu, số điện thoại")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button("Ảnh được chia sẻ", systemImage: "tray.and.arrow.down") { sharedInbox = true }
-                        Button("Nhập từ kho Bill", systemImage: "folder") { bill = true }.accessibilityIdentifier("orders.bill")
-                    } label: { Label("Nhận ảnh", systemImage: "tray.and.arrow.down") }.accessibilityIdentifier("orders.receive").disabled(store.busy || store.blocked)
-                }
-                ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) }
-            }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) } }
             .navigationDestination(for: UUID.self) { OrderDetailView(id: $0) }
             .sheet(isPresented: $newOrder, onDismiss: openSavedOrder) { OrderIntakeView { id in savedOrder = id; newOrder = false } }
-            .sheet(isPresented: $bill, onDismiss: openSavedOrder) { BillInboxView { id in savedOrder = id; bill = false } }
             .sheet(isPresented: $sharedInbox, onDismiss: openSavedOrder) { SharedInboxView(inbox: inbox) { id in savedOrder = id; sharedInbox = false } }
-            .task {
-                await refreshInbox()
-                if let id = router.orderID, store.order(id) != nil { path = [id]; router.orderID = nil }
-            }
+            .task { await refreshInbox(); if let id = router.orderID, store.order(id) != nil { path = [id]; router.orderID = nil } }
             .onReceive(NotificationCenter.default.publisher(for: .sweepInboxReceived)) { _ in Task { await refreshInbox() } }
-            .onChange(of: router.orderID) { _, id in
-                if let id, store.order(id) != nil { path = [id]; router.orderID = nil }
-            }
+            .onChange(of: router.orderID) { _, id in if let id, store.order(id) != nil { path = [id]; router.orderID = nil } }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refreshInbox() } } }
         }
     }
@@ -112,13 +88,12 @@ struct OrdersView: View {
             }
             #endif
             await inbox.reload()
-            if !inbox.items.isEmpty, !newOrder, !bill, !sharedInbox, !store.busy, !store.blocked { sharedInbox = true }
+            if !inbox.items.isEmpty, !newOrder, !sharedInbox, !store.busy, !store.blocked { sharedInbox = true }
         } while inboxRefreshRequested
     }
     private func openSavedOrder() {
         guard let id = savedOrder else { return }
-        savedOrder = nil; query = ""; filter = "Tất cả"; allDates = true
-        path.append(id)
+        savedOrder = nil; query = ""; filter = "Đang giao"; path.append(id)
     }
 }
 
@@ -227,7 +202,7 @@ struct OrderIntakeView: View {
                     if !signed {
                         Button("Xác nhận ký nhận phiếu") { askSigned = true }.buttonStyle(SweepCompactPill())
                     }
-                    Button(signed ? "Nhập đơn và ghi công ký nhận" : "Nhập đơn vào Sweep") { Task { await save() } }
+                    Button(signed ? "Nhập đơn và ghi công ký nhận" : "Nhập đơn vào Sendeli") { Task { await save() } }
                         .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).controlSize(.large)
                         .accessibilityIdentifier("intake.save").disabled(store.busy || reading || !signed || source == nil)
                 }.padding().frame(maxWidth: .infinity).background(.bar)
@@ -314,12 +289,12 @@ struct BillInboxView: View {
             List {
                 Section {
                     Button("Chọn SenTechTips_AnhDonHang") { folderPicker = true }
-                    Text("Trong Tệp: iCloud Drive → Shortcuts → SenTechTips_AnhDonHang. Sweep chỉ đọc, giữ sổ và ảnh bên Bill nguyên trạng. Mỗi hồ sơ được xem trước rồi Sếp xác nhận nhập.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Trong Tệp: iCloud Drive → Shortcuts → SenTechTips_AnhDonHang. Sendeli chỉ đọc, giữ sổ và ảnh bên Bill nguyên trạng. Mỗi hồ sơ được xem trước rồi Sếp xác nhận nhập.").font(.footnote).foregroundStyle(.secondary)
                     if loading { ProgressView("Đang đọc gói Bill…") }
                 }
                 if let result {
                     Section("\(result.candidates.count) hồ sơ tìm thấy · \(result.candidates.filter { item in store.ledger.orders.contains { $0.sourceID == item.id } }.count) đã nhập") {
-                        Text("Đây là danh sách xem trước. Chạm một hồ sơ, kiểm tra thông tin rồi bấm Nhập đơn vào Sweep.").font(.footnote).foregroundStyle(.secondary)
+                        Text("Đây là danh sách xem trước. Chạm một hồ sơ, kiểm tra thông tin rồi bấm Nhập đơn vào Sendeli.").font(.footnote).foregroundStyle(.secondary)
                         ForEach(result.candidates.filter { query.isEmpty || ($0.customer + " " + $0.filename).localizedStandardContains(query) }) { item in
                             if let old = store.ledger.orders.first(where: { $0.sourceID == item.id }) {
                                 Button { saved(old.id) } label: { Label("\(item.customer) · đã nhập, mở lại", systemImage: "checkmark.circle") }.accessibilityIdentifier("bill.existing.\(item.id)")

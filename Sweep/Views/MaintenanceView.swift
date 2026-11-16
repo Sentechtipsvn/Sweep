@@ -16,11 +16,11 @@ struct MaintenanceView: View {
                 Button("Sao lưu và dọn cache") { reset = false; folder = true }.buttonStyle(SweepPill())
             }
             Section("Bắt đầu dùng chính thức") {
-                Text("Đặt lại toàn bộ dữ liệu thử nghiệm: đơn, ảnh trong Sweep, tiền, công, vị trí, liên hệ, cấu hình và ảnh chờ nhập. Không xoá ảnh trong thư viện hay Zalo.").font(.subheadline)
+                Text("Đặt lại toàn bộ dữ liệu thử nghiệm: đơn, ảnh trong Sendeli, tiền, công, vị trí, liên hệ, cấu hình và ảnh chờ nhập. Không xoá ảnh trong thư viện hay Zalo.").font(.subheadline)
                 Button("Sao lưu và xoá dữ liệu thử nghiệm…", role: .destructive) { reset = true; folder = true }.accessibilityIdentifier("maintenance.reset")
             }
             Section {
-                Text("Chọn thư mục sao lưu ngoài Sweep. Chỉ xoá sau khi bản sao đã ghi xong và kiểm tra lại đầy đủ.").font(.caption).foregroundStyle(.secondary)
+                Text("Chọn thư mục sao lưu ngoài Sendeli. Chỉ xoá sau khi bản sao đã ghi xong và kiểm tra lại đầy đủ.").font(.caption).foregroundStyle(.secondary)
                 if store.busy { ProgressView("Đang sao lưu và kiểm tra…") }
                 if !result.isEmpty { Text(result).foregroundStyle(.secondary) }
             }
@@ -35,6 +35,6 @@ struct MaintenanceView: View {
                     Task { if let dir = backupFolder, let backup = await store.maintain(backupFolder: dir, reset: reset) { result = "Đã hoàn tất. Bản sao: " + backup.lastPathComponent } }
                 }.disabled(reset && confirmation != "XOA")
                 Button("Huỷ", role: .cancel) {}
-            } message: { Text(reset ? "Toàn bộ sổ và cấu hình trong Sweep sẽ bị xoá sau khi sao lưu. Nhập XOA để tiếp tục." : "Giữ nguyên dữ liệu giao hàng. Nếu sao lưu lỗi, Sweep không dọn.") }
+            } message: { Text(reset ? "Toàn bộ sổ và cấu hình trong Sendeli sẽ bị xoá sau khi sao lưu. Nhập XOA để tiếp tục." : "Giữ nguyên dữ liệu giao hàng. Nếu sao lưu lỗi, Sendeli không dọn.") }
     }
 }

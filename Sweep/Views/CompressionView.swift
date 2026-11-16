@@ -40,11 +40,11 @@ struct CompressionView: View {
                 if store.busy { ProgressView("Đang xử lý…").frame(maxWidth: .infinity) }
                 if let output = store.output {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("\(SendeliFormat.bytes(output.sourceBytes)) → \(SendeliFormat.bytes(output.outputBytes))")
+                        Text("\(SweepFormat.bytes(output.sourceBytes)) → \(SweepFormat.bytes(output.outputBytes))")
                             .font(.title3.bold()).monospacedDigit()
                         Text("JPEG · \(output.width) × \(output.height)").font(.caption).foregroundStyle(.secondary)
                         if output.savedBytes > 0 {
-                            Text("Bản mới nhỏ hơn \(SendeliFormat.bytes(output.savedBytes)). Đây chưa phải dung lượng đã giải phóng trên máy.")
+                            Text("Bản mới nhỏ hơn \(SweepFormat.bytes(output.savedBytes)). Đây chưa phải dung lượng đã giải phóng trên máy.")
                                 .font(.footnote).foregroundStyle(.green)
                         } else {
                             Text("Bản mới không nhỏ hơn ảnh đầu vào. Sếp cân nhắc giảm kích thước/chất lượng hoặc giữ ảnh cũ.")

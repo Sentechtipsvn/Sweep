@@ -7,6 +7,7 @@ private enum AppRelease {
 
 struct HomeView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
+    @EnvironmentObject private var store: DeliveryStore
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 12), count: typeSize.isAccessibilitySize ? 2 : 4) }
     var body: some View {
         ScrollView {
@@ -18,7 +19,11 @@ struct HomeView: View {
                 NavigationLink { PlacesView() } label: { ToolIcon(title: "Vị trí", asset: "tool-places") }
                 NavigationLink { ContactsView() } label: { ToolIcon(title: "Liên hệ", asset: "tool-contacts") }
                 NavigationLink { MaintenanceView() } label: { ToolIcon(title: "Dọn dẹp", asset: "tool-cleanup") }
-                NavigationLink { PayrollView() } label: { ToolIcon(title: "Chấm công", asset: "tool-payroll") }.accessibilityIdentifier("tool.payroll")
+                NavigationLink { PayrollView() } label: {
+                    TimelineView(.periodic(from: .now, by: 60)) { clock in
+                        ToolIcon(title: "Chấm công", asset: "tool-payroll", badge: AttendanceReminderPolicy.showDot(store.ledger, now: clock.date))
+                    }
+                }.accessibilityIdentifier("tool.payroll")
             }.buttonStyle(.plain).padding(20)
         }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle("Công cụ")
     }
@@ -26,10 +31,12 @@ struct HomeView: View {
 private struct ToolIcon: View {
     let title: String
     let asset: String
+    var badge = false
     var body: some View {
         VStack(spacing: 8) {
             Image(asset).resizable().scaledToFit().frame(maxWidth: 66).aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(alignment: .topTrailing) { if badge { Circle().fill(SweepStyle.green).frame(width: 10, height: 10).offset(x: 3, y: -3).accessibilityLabel("Chưa chấm công hôm nay") } }
             Text(title).font(.caption).foregroundStyle(.primary).multilineTextAlignment(.center).lineLimit(2).frame(minHeight: 32, alignment: .top)
         }.frame(maxWidth: .infinity).contentShape(Rectangle())
     }
@@ -37,6 +44,8 @@ private struct ToolIcon: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var library: PhotoStore
+    @EnvironmentObject private var delivery: DeliveryStore
+    @EnvironmentObject private var attendance: AttendanceReminderManager
     @AppStorage("photoLimit") private var photoLimit = 500
     @AppStorage("allowCloudScan") private var allowCloud = false
     var body: some View {
@@ -46,10 +55,15 @@ struct SettingsView: View {
                 NavigationLink("Dọn dẹp / đặt lại dữ liệu") { MaintenanceView() }
                 NavigationLink("Công đơn và QR công ty") { DeliverySettingsView() }
                 NavigationLink("Chấm công và lương") { PayrollView() }
-                NavigationLink("Gia hạn Sweep") { RenewalView() }
+                NavigationLink("Gia hạn Sendeli") { RenewalView() }
                 NavigationLink("Nhận ảnh bằng Phím tắt") { SweepShortcutGuide() }
                 NavigationLink("Sao lưu và khôi phục sổ / ảnh") { DeliveryBackupView() }
                 Text("Sổ lưu trên thiết bị. Xóa app có thể xóa sổ; xuất bản sao ra Tệp trước khi đổi máy hoặc cài lại.").font(.footnote).foregroundStyle(.secondary)
+            }
+            Section("Nhắc chấm công") {
+                Toggle("Nhắc lúc 17:30", isOn: Binding(get: { attendance.enabled }, set: { value in Task { await attendance.setEnabled(value, ledger: delivery.ledger) } }))
+                Text(attendance.status).font(.footnote).foregroundStyle(.secondary)
+                Button("Mở cài đặt thông báo") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
             }
             Section("Quét thư viện ảnh") {
                 Stepper("\(photoLimit) ảnh gần nhất", value: $photoLimit, in: 100...5000, step: 100)
@@ -60,16 +74,16 @@ struct SettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Quyền truy cập") {
-                Button("Mở cài đặt quyền của Sweep") {
+                Button("Mở cài đặt quyền của Sendeli") {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }
-                Text("Quyền ảnh giới hạn chỉ cho Sweep xem các ảnh Sếp đã chọn. App không thể dọn cache của các ứng dụng khác hoặc toàn bộ Dữ liệu hệ thống.")
+                Text("Quyền ảnh giới hạn chỉ cho Sendeli xem các ảnh Sếp đã chọn. App không thể dọn cache của các ứng dụng khác hoặc toàn bộ Dữ liệu hệ thống.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            Section("Cách Sweep bảo vệ dữ liệu") {
+            Section("Cách Sendeli bảo vệ dữ liệu") {
                 Label("Chỉ xóa ảnh sau khi Sếp xác nhận", systemImage: "checkmark.shield")
                 Label("Nén thành bản mới, giữ ảnh đầu vào", systemImage: "doc.on.doc")
-                Label("Không gửi ảnh lên máy chủ của Sweep", systemImage: "iphone")
+                Label("Không gửi ảnh lên máy chủ của Sendeli", systemImage: "iphone")
                 Text("Xóa ảnh trong iCloud Photos được đồng bộ sang thiết bị khác. Ảnh vào Đã xóa gần đây; dung lượng trống không nhất thiết tăng ngay.")
                     .font(.footnote).foregroundStyle(.secondary)
             }

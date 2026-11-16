@@ -39,7 +39,7 @@ struct FilesView: View {
                 }
             }
             Section {
-                Text("Bản đầu hỗ trợ kiểm tra và xem trước. Sếp quản lý/xóa file bằng ứng dụng Tệp; Sweep chưa tự xóa tài liệu trong thư mục.")
+                Text("Bản đầu hỗ trợ kiểm tra và xem trước. Sếp quản lý/xóa file bằng ứng dụng Tệp; Sendeli chưa tự xóa tài liệu trong thư mục.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -51,7 +51,7 @@ struct FilesView: View {
             }
         }
         .quickLookPreview($preview)
-        .alert("Sweep", isPresented: Binding(get: { scanner.message != nil }, set: { if !$0 { scanner.message = nil } })) {
+        .alert("Sendeli", isPresented: Binding(get: { scanner.message != nil }, set: { if !$0 { scanner.message = nil } })) {
             Button("Đã hiểu") { scanner.message = nil }
         } message: { Text(scanner.message ?? "") }
         .onDisappear { scanner.cancel() }
