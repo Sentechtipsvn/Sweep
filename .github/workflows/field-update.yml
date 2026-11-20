@@ -60,6 +60,7 @@ jobs:
             -only-testing:SweepUITests/SweepUITests/testSendeliWorkCardAndCompactDirectories \
             -only-testing:SweepUITests/SweepUITests/testHotfixUnsignedBankOpensAfterSigningAndQRDoesNotRecordPayment \
             -only-testing:SweepUITests/SweepUITests/testHotfixPartialCashThenTransferNowPersistsOnlyConfirmedCash \
+            -only-testing:SweepUITests/SweepUITests/testReportImageSelectionAndCompactTransferCaption \
             -only-testing:SweepUITests/SweepUITests/testHotfixFreightConfirmationAndHorizontalImageButtons \
             test | tee device-ui.log
       - name: Export screenshots

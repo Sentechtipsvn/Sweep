@@ -22,11 +22,15 @@ enum BackupPart: String, CaseIterable, Codable {
 struct ArchivedPhoto: Codable, Equatable {
     var orderID: UUID?
     var evidence: DeliveryEvidence
+    var excluded: Bool? = nil
 }
 
 extension DeliveryLedger {
     var photoIndex: [ArchivedPhoto] {
-        orders.flatMap { order in order.evidence.map { ArchivedPhoto(orderID: order.id, evidence: $0) } }
+        orders.flatMap { order in
+            let excluded = Set(order.exclusions.map(\.evidenceID))
+            return order.evidence.map { ArchivedPhoto(orderID: order.id, evidence: $0, excluded: excluded.contains($0.id) ? true : nil) }
+        }
             + (settings.qr.map { [ArchivedPhoto(orderID: nil, evidence: $0)] } ?? []) + (unfiledPhotos ?? [])
     }
     func selectedBackup(_ parts: Set<BackupPart>) throws -> DeliveryLedger {
@@ -62,7 +66,7 @@ extension DeliveryLedger {
                     guard same == file else { throw DeliveryError.invalid("ID ảnh trùng với chứng từ khác trên máy.") }
                     continue
                 }
-                if let owner = photo.orderID, let index = owners[owner] {
+                if photo.excluded != true, let owner = photo.orderID, let index = owners[owner] {
                     next.orders[index].evidence.append(file)
                     next.orders[index].revision += 1
                 } else {

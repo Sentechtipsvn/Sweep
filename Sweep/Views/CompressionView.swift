@@ -17,9 +17,9 @@ struct CompressionView: View {
                 HStack {
                     PhotosPicker(selection: $picker, matching: .images, preferredItemEncoding: .current) {
                         Label("Chọn từ Ảnh", systemImage: "photo")
-                    }.buttonStyle(SweepCompactPill())
+                    }.buttonStyle(SweepPill(expanded: false))
                     Button { showFilePicker = true } label: { Label("Từ Tệp", systemImage: "folder") }
-                        .buttonStyle(SweepCompactPill())
+                        .buttonStyle(SweepPill(expanded: false))
                 }.disabled(store.busy)
                 if let preview {
                     Image(uiImage: preview).resizable().scaledToFit()
@@ -35,7 +35,7 @@ struct CompressionView: View {
                     Slider(value: $quality, in: 0.5...0.95, step: 0.01)
                     Button { store.compress(edge: edge, quality: quality) } label: {
                         Label("Tạo bản nén", systemImage: "arrow.down.right.and.arrow.up.left").frame(maxWidth: .infinity)
-                    }.buttonStyle(SweepCompactPill()).disabled(store.source == nil || store.busy)
+                    }.buttonStyle(SweepPill(expanded: false)).disabled(store.source == nil || store.busy)
                 }.disabled(store.busy)
                 if store.busy { ProgressView("Đang xử lý…").frame(maxWidth: .infinity) }
                 if let output = store.output {
@@ -52,8 +52,8 @@ struct CompressionView: View {
                         }
                         Toggle("Xem ảnh đầu vào để so sánh", isOn: $showOriginal)
                         HStack {
-                            Button("Lưu ảnh mới") { store.save() }.buttonStyle(SweepCompactPill())
-                            ShareLink(item: output.url) { Label("Chia sẻ", systemImage: "square.and.arrow.up") }.buttonStyle(SweepCompactPill())
+                            Button("Lưu ảnh mới") { store.save() }.buttonStyle(SweepPill(expanded: false))
+                            ShareLink(item: output.url) { Label("Chia sẻ", systemImage: "square.and.arrow.up") }.buttonStyle(SweepPill(expanded: false))
                         }.disabled(store.busy)
                     }.padding().background(.background, in: RoundedRectangle(cornerRadius: 20))
                 }

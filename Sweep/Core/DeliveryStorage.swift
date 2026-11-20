@@ -51,7 +51,7 @@ final class DeliveryDatabase {
     func reset(using verified: DeliveryBackup.Prepared) throws {
         try execute("BEGIN IMMEDIATE")
         do {
-            guard try load() == verified.ledger else { throw DeliveryError.invalid("Sổ đã đổi sau sao lưu. Chưa đặt lại dữ liệu.") }
+            guard verified.parts == BackupPart.all, try load() == verified.ledger else { throw DeliveryError.invalid("Sổ đã đổi sau sao lưu. Chưa đặt lại dữ liệu.") }
             let data = try DeliveryCoding.encode(DeliveryLedger())
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(connection, "INSERT INTO ledger(id,payload) VALUES(1,?)", -1, &statement, nil) == SQLITE_OK else { throw failure() }

@@ -60,7 +60,7 @@ struct PlaceMapPicker: View {
                     if let url = MapPin.googleSearch(query.isEmpty ? address : query), !query.isEmpty || !address.isEmpty {
                         Link("Google Maps", destination: url)
                     }
-                }.buttonStyle(SweepCompactPill()).padding(.top, 6)
+                }.buttonStyle(SweepPill(expanded: false)).padding(.top, 6)
                 Button("Dùng vị trí ghim") { if let center { select(center); dismiss() } }
                     .buttonStyle(SweepPill()).disabled(center == nil).padding(8)
             }

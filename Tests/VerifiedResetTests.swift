@@ -21,6 +21,16 @@ final class VerifiedResetTests: XCTestCase {
         let backup = root.appendingPathComponent("test.sweepbackup")
         try DeliveryBackup.write(ledger, evidence: root, to: backup)
         let verified = try DeliveryBackup.prepare(backup, staging: root.appendingPathComponent("verified"))
+        for parts: Set<BackupPart> in [[.photos], [.places], [.orders, .photos]] {
+            let path = root.appendingPathComponent(UUID().uuidString)
+            try DeliveryBackup.write(ledger, evidence: root, to: path, parts: parts)
+            let subset = try DeliveryBackup.prepare(path, staging: root.appendingPathComponent(UUID().uuidString))
+            XCTAssertEqual(subset.parts, parts)
+            XCTAssertEqual(subset.ledger.allEvidence.count, parts.contains(.photos) ? 1 : 0)
+            XCTAssertEqual(subset.ledger.orders.count, parts.contains(.orders) ? 1 : 0)
+            if parts.contains(.photos) { try EvidenceFiles.verify(order.evidence[0], directory: subset.staging) }
+            XCTAssertThrowsError(try db.reset(using: subset))
+        }
         var updated = ledger; try updated.handover(100, at: Date(), note: "Nộp")
         try db.save(updated)
         XCTAssertThrowsError(try db.reset(using: verified)); XCTAssertEqual(try db.load(), updated)

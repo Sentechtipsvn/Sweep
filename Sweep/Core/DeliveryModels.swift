@@ -270,19 +270,19 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
         return orderedEvidence.filter { roles.contains($0.role) }.map(\.id)
     }
     func shareText() -> String {
-        if settlement?.route == .freight { return "\(customer) · Đã giao chành · \(code)" }
+        if settlement?.route == .freight { return "\(displayCustomer) · Đã giao chành · \(code)" }
         if bank > 0 {
             let mixed = cash > 0 ? " · Tiền mặt \(VND.format(cash))" : ""
             let deferred = remaining > 0 ? " · Còn chuyển sau \(VND.format(remaining))" : ""
-            return "\(customer) đã chuyển khoản \(VND.format(bank))" + mixed + deferred
+            return "\(displayCustomer) đã chuyển khoản \(VND.format(bank))" + mixed + deferred
         }
         if settlement?.route == .transferLater {
             let mixed = cash > 0 ? " · Đã thu tiền mặt \(VND.format(cash))" : ""
-            return "\(customer) · Chuyển khoản sau \(VND.format(remaining))" + mixed
+            return "\(displayCustomer) · Chuyển khoản sau \(VND.format(remaining))" + mixed
         }
-        if cash > 0 { return "\(customer) đã thanh toán tiền mặt \(VND.format(cash))" }
-        if settlement?.mode == .deferred { return "\(customer) · Chuyển khoản sau · \(VND.format(total))" }
-        return "\(customer) · \(VND.format(total))"
+        if cash > 0 { return "\(displayCustomer) đã thanh toán tiền mặt \(VND.format(cash))" }
+        if settlement?.mode == .deferred { return "\(displayCustomer) · Chuyển khoản sau · \(VND.format(total))" }
+        return "\(displayCustomer) · \(VND.format(total))"
     }
     func reportText() -> String {
         var rows = [customer, "Mã phiếu: \(code)", "Kết quả: \(outcome.rawValue)", "Tổng đơn: \(VND.format(total))",

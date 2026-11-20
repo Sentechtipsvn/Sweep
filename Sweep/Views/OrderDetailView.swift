@@ -365,6 +365,7 @@ struct OrderReportView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(OriginalPhotoPolicy.key) private var photoPolicy = OriginalPhotoPolicy.ask.rawValue
     @State private var completedReport: DeliveryReport?
+    @State private var needsSendConfirmation = false
     @State private var shareError: String?
     @State private var originals: [String: String] = [:]
     @State private var askCleanup = false
@@ -478,10 +479,11 @@ struct OrderReportView: View {
         }
         .sheet(item: $sharing, onDismiss: finishShare) { payload in
             DeliveryShareSheet(items: payload.items, completion: { activity, completed, error in
-                let target = activity?.rawValue.lowercased() ?? ""
                 if let error { shareError = error.localizedDescription }
-                else if completed && (target == "vn.com.vng.zingalo" || target.hasPrefix("vn.com.vng.zingalo.")) {
+                else if ReportShareResult.sentToZalo(activity: activity?.rawValue, completed: completed, failed: false) {
                     completedReport = prepared
+                } else if completed && !(activity?.rawValue.lowercased().hasPrefix("com.apple.") ?? false) {
+                    needsSendConfirmation = true
                 }
                 sharing = nil
             })
@@ -493,8 +495,8 @@ struct OrderReportView: View {
             Button("Giữ ảnh", role: .cancel) { leaveReport() }
         } message: { Text("Bản chứng từ trong Sendeli vẫn được lưu. iOS có thể yêu cầu xác nhận xoá.") }
         .quickLookPreview($preview)
-        .alert("Đã gửi nội dung và ảnh đã chọn?", isPresented: $confirm) {
-            Button("Đúng, đã gửi") { if let prepared { _ = store.change { try $0.acknowledgeReport(id, reportID: prepared.id) } } }
+        .alert("Đã gửi bộ ảnh này vào nhóm Zalo?", isPresented: $confirm) {
+            Button("Đúng, đã gửi") { if let prepared { acknowledge(prepared) } }
             Button("Chưa gửi", role: .cancel) {}
         }
     }
@@ -504,8 +506,12 @@ struct OrderReportView: View {
     }
     private func finishShare() {
         if let error = shareError { shareError = nil; store.message = error; return }
+        if needsSendConfirmation { needsSendConfirmation = false; confirm = true; return }
         guard let report = completedReport else { return }
         completedReport = nil
+        acknowledge(report)
+    }
+    private func acknowledge(_ report: DeliveryReport) {
         guard store.change({ try $0.acknowledgeReport(id, reportID: report.id) }), let order = store.order(id) else { return }
         let selected = Set(report.evidenceIDs)
         originals = ReportOriginals.candidates(order.activeEvidence.filter { selected.contains($0.id) })

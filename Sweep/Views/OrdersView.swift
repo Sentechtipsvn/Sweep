@@ -212,10 +212,10 @@ struct OrderIntakeView: View {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 6) {
                     if !signed {
-                        Button("Xác nhận ký nhận phiếu") { askSigned = true }.buttonStyle(SweepCompactPill())
+                        Button("Xác nhận ký nhận phiếu") { askSigned = true }.buttonStyle(SweepPill(expanded: false))
                     }
                     Button(signed ? "Nhập đơn và ghi công ký nhận" : "Nhập đơn vào Sendeli") { Task { await save() } }
-                        .buttonStyle(SweepCompactPill()).frame(maxWidth: .infinity).controlSize(.large)
+                        .buttonStyle(SweepPill(expanded: false)).frame(maxWidth: .infinity).controlSize(.large)
                         .accessibilityIdentifier("intake.save").disabled(store.busy || reading || !signed || source == nil)
                 }.padding().frame(maxWidth: .infinity).background(.bar)
             }

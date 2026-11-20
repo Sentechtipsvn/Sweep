@@ -19,7 +19,7 @@ struct SweepApp: App {
                 NavigationStack(path: $router.settings) { SettingsView().navigationDestination(for: String.self) { _ in RenewalView() } }
                     .tabItem { Label("Cài đặt", systemImage: "gearshape") }.tag(3)
             }
-            .buttonStyle(SweepCompactPill())
+            .buttonStyle(SweepPill(expanded: false))
             .tint(SweepStyle.blue)
             .environmentObject(library)
             .environmentObject(delivery)

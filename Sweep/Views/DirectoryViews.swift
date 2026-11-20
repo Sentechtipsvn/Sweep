@@ -23,9 +23,9 @@ struct ZaloContactButton: View {
                     if !opened { showFallback = true }
                 }
             } label: {
-                if compact { Text("Zalo").font(.system(size: 11, weight: .semibold)).frame(width: 44, height: 44).background(Color.blue.opacity(0.12), in: Circle()).accessibilityLabel("Zalo") }
+                if compact { Text("Zalo").font(.system(size: 11, weight: .semibold)).frame(minHeight: 28).accessibilityLabel("Zalo") }
                 else { Text(title) }
-            }.buttonStyle(SendeliZaloStyle(compact: compact)).accessibilityIdentifier("contact.zalo")
+            }.buttonStyle(SweepPill(expanded: false)).accessibilityIdentifier("contact.zalo")
                 .alert("Chưa mở được liên hệ Zalo", isPresented: $showFallback) {
                     Button("Mở liên kết bằng trình duyệt") { UIApplication.shared.open(destination) }
                     if !phone.isEmpty { Button("Sao chép số") { UIPasteboard.general.string = phone } }
@@ -337,13 +337,5 @@ struct PlaceEditor: View {
                 ledger.orders[i].freightPlaceID = ledger.places?.first(where: { $0.key == value.key })?.id
             }
         }) { dismiss() }
-    }
-}
-
-private struct SendeliZaloStyle: ButtonStyle {
-    let compact: Bool
-    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
-        if compact { configuration.label.foregroundStyle(.blue).opacity(configuration.isPressed ? 0.6 : 1) }
-        else { SweepCompactPill().makeBody(configuration: configuration) }
     }
 }

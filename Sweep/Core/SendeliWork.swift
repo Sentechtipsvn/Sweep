@@ -46,13 +46,13 @@ struct DeliveryWorkItem: Identifiable {
         for order in ledger.orders where order.voidReason == nil && order.outcome == .delivered {
             if order.requiresReport && !order.reportSent {
                 let missing = order.missingEvidence()
-                result.append(Self(id: "report-\(order.id)", title: missing.isEmpty ? "Chưa xác nhận gửi nhóm" : "Thiếu chứng từ", detail: order.code + " · " + order.customer + (missing.isEmpty ? "" : " · " + missing.map(\.rawValue).joined(separator: ", ")), kind: .report, orderID: order.id))
+                result.append(Self(id: "report-\(order.id)", title: missing.isEmpty ? "Chưa xác nhận gửi nhóm" : "Thiếu chứng từ", detail: order.code + " · " + order.displayCustomer + (missing.isEmpty ? "" : " · " + missing.map(\.rawValue).joined(separator: ", ")), kind: .report, orderID: order.id))
             }
             if order.remaining > 0 && order.settlement?.route != .freight && order.settlement?.route != .cashFull {
                 result.append(Self(id: "payment-\(order.id)", title: "Khách còn hẹn chuyển khoản", detail: order.code + " · " + VND.format(order.remaining), kind: .payment, orderID: order.id))
             }
             if order.remaining > 0 && order.settlement?.route == .freight {
-                result.append(Self(id: "sales-\(order.id)", title: "Bán hàng theo dõi tiền chành", detail: order.code + " · " + order.customer, kind: .sales, orderID: order.id))
+                result.append(Self(id: "sales-\(order.id)", title: "Bán hàng theo dõi tiền chành", detail: order.code + " · " + order.displayCustomer, kind: .sales, orderID: order.id))
             }
         }
         if ledger.cashHeld > 0 { result.append(Self(id: "cash", title: "Tiền mặt còn giữ", detail: VND.format(ledger.cashHeld) + " · gồm tiền từ ngày trước", kind: .cash)) }
@@ -66,4 +66,11 @@ struct DeliveryWorkItem: Identifiable {
 
 extension DeliveryOrder {
     var firstDeliveredAt: Date? { settlements.first(where: { $0.outcome == .delivered })?.at }
+}
+
+enum ReportShareResult {
+    static func sentToZalo(activity: String?, completed: Bool, failed: Bool) -> Bool {
+        guard completed, !failed, let target = activity?.lowercased() else { return false }
+        return target == "vn.com.vng.zingalo" || target.hasPrefix("vn.com.vng.zingalo.")
+    }
 }

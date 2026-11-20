@@ -37,13 +37,19 @@ final class AttendanceReminderManager: ObservableObject {
         guard token == generation else { return }
         let pending = await center.pendingNotificationRequests()
         guard token == generation else { return }
-        center.removePendingNotificationRequests(withIdentifiers: pending.filter { $0.identifier.hasPrefix("sendeli.attendance.") }.map(\.identifier))
+        let prefix = "sendeli.attendance."
+        let existing = Set(pending.map(\.identifier).filter { $0.hasPrefix(prefix) })
+        let authorized = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+        let dates = enabled && authorized ? AttendanceReminderPolicy.dates(ledger, now: Date()) : []
+        func identifier(_ date: Date) -> String { prefix + String(Int(date.timeIntervalSince1970)) }
+        let obsolete = existing.subtracting(dates.map(identifier))
+        if !obsolete.isEmpty { center.removePendingNotificationRequests(withIdentifiers: Array(obsolete)) }
         guard enabled else { status = "Nhắc chấm công đang tắt."; return }
-        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+        guard authorized else {
             status = "Chưa có quyền thông báo. Dấu nhắc trong app vẫn hoạt động."; return
         }
         do {
-            for date in AttendanceReminderPolicy.dates(ledger, now: Date()) {
+            for date in dates where !existing.contains(identifier(date)) {
                 guard token == generation else { return }
                 let content = UNMutableNotificationContent()
                 content.title = "Sendeli · Nhớ chấm công hôm nay"
@@ -51,7 +57,7 @@ final class AttendanceReminderManager: ObservableObject {
                 content.sound = .default; content.userInfo = ["route": "attendance"]
                 var components = DeliveryMonth.calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
                 components.timeZone = DeliveryMonth.calendar.timeZone
-                try await center.add(UNNotificationRequest(identifier: "sendeli.attendance.\(Int(date.timeIntervalSince1970))", content: content,
+                try await center.add(UNNotificationRequest(identifier: identifier(date), content: content,
                     trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)))
             }
             if token == generation { status = "Nhắc lúc 08:00 giờ Việt Nam, thứ Hai–thứ Bảy nếu chưa chấm, trừ ngày nghỉ lễ. Lịch 30 ngày được cập nhật khi mở app hoặc sửa công." }

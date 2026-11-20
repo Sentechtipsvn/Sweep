@@ -14,7 +14,7 @@ private struct GlassSurface: ViewModifier {
         content.background {
             Capsule().fill(.thinMaterial)
                 .overlay { if opaque { Capsule().fill(Color(uiColor: .secondarySystemBackground)) } }
-                .overlay { Capsule().fill(Color.white.opacity(selected ? (dark ? 0.82 : 0.68) : 0.035)) }
+                .overlay { Capsule().fill(selected ? (dark ? Color.white : Color.black).opacity(0.82) : Color.white.opacity(0.035)) }
                 .overlay {
                     Capsule().strokeBorder(LinearGradient(colors: [
                         .white.opacity(dark ? 0.65 : 0.94), .white.opacity(0.13),
@@ -25,13 +25,14 @@ private struct GlassSurface: ViewModifier {
     }
 }
 struct SweepPill: ButtonStyle {
+    @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var selected = false
     var expanded = true
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.subheadline.weight(.semibold))
-            .foregroundStyle(configuration.role == .destructive ? Color.red : selected ? Color.black : Color.primary)
+            .foregroundStyle(configuration.role == .destructive ? Color.red : selected ? (scheme == .dark ? Color.black : Color.white) : Color.primary)
             .padding(.horizontal, 12).padding(.vertical, 4)
             .frame(maxWidth: expanded ? .infinity : nil, minHeight: 44)
             .modifier(GlassSurface(selected: selected))
@@ -41,13 +42,6 @@ struct SweepPill: ButtonStyle {
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
-struct SweepCompactPill: ButtonStyle {
-    var expanded = false
-    func makeBody(configuration: Configuration) -> some View {
-        SweepPill(expanded: expanded).makeBody(configuration: configuration)
-    }
-}
-
 struct SweepOrderStatus: View {
     let order: DeliveryOrder
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -77,8 +71,8 @@ struct SweepCallButton: View {
         if let url = URL(string: "tel:" + phone.filter { $0.isNumber || $0 == "+" }), !phone.isEmpty {
             Link(destination: url) {
                 Image(systemName: "phone.fill").font(.system(size: 20)).foregroundStyle(.blue)
-                    .frame(width: 44, height: 44)
-            }.buttonStyle(.plain).accessibilityLabel("Gọi " + phone).accessibilityIdentifier("contact.call")
+                    .frame(minHeight: 28)
+            }.buttonStyle(SweepPill(expanded: false)).accessibilityLabel("Gọi " + phone).accessibilityIdentifier("contact.call")
         }
     }
 }

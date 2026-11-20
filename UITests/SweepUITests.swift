@@ -416,12 +416,12 @@ final class SweepUITests: XCTestCase {
         XCTAssertFalse(app.buttons["report.prepare"].exists)
         reveal(app.buttons["report.share"], in: app); app.buttons["report.share"].tap()
         dismissActivity(in: app)
-        XCTAssertTrue(app.alerts.buttons["Chưa gửi"].waitForExistence(timeout: 10)); app.alerts.buttons["Chưa gửi"].tap()
+        XCTAssertFalse(app.alerts.buttons["Chưa gửi"].exists)
         XCTAssertTrue(app.buttons["report.ack"].waitForExistence(timeout: 10)); XCTAssertTrue(app.buttons["report.ack"].isEnabled)
         XCTAssertFalse(app.buttons["report.remove.Phiếu khách ký"].exists)
         attach(app, name: "report-two-selected-images-short-caption")
         app.buttons["report.ack"].tap(); app.alerts.buttons["Đúng, đã gửi"].tap()
-        XCTAssertFalse(app.buttons["report.ack"].isEnabled)
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 8))
         attach(app, name: "report-explicit-sent-confirmation")
     }
 
@@ -565,13 +565,13 @@ final class SweepUITests: XCTestCase {
         reveal(app.buttons["order.report"], in: app); app.buttons["order.report"].tap()
         reveal(app.buttons["report.share"], in: app); app.buttons["report.share"].tap()
         dismissActivity(in: app)
-        XCTAssertTrue(app.alerts.buttons["Chưa gửi"].waitForExistence(timeout: 10)); app.alerts.buttons["Chưa gửi"].tap()
+        XCTAssertFalse(app.alerts.buttons["Chưa gửi"].exists)
         let ack = app.buttons["report.ack"]
         reveal(ack, in: app); XCTAssertTrue(ack.waitForExistence(timeout: 5)); XCTAssertTrue(ack.isEnabled)
         // Preparing/sharing is not a sent receipt. Only the explicit user acknowledgement changes this state.
         attach(app, name: "05-report-awaiting-confirmation")
         ack.tap(); app.alerts.buttons["Đúng, đã gửi"].tap()
-        XCTAssertTrue(app.buttons["report.ack"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["report.ack"].isEnabled)
+        XCTAssertTrue(app.navigationBars["Chi tiết đơn"].waitForExistence(timeout: 8))
         app.tabBars.buttons["Lịch sử"].tap()
         XCTAssertTrue(app.staticTexts["5.000₫"].firstMatch.waitForExistence(timeout: 5))
         attach(app, name: "06-reconciliation")

@@ -13,6 +13,15 @@ final class FieldUpdateTests: XCTestCase {
         order.customer = "Tiệm (HKD (A)) (B)"
         XCTAssertEqual(order.displayCustomer, "Tiệm")
     }
+    func testOnlyCompletedZaloActivityQualifiesForCleanup() {
+        let zalo = "vn.com.vng.zingalo.Share"
+        XCTAssertTrue(ReportShareResult.sentToZalo(activity: zalo, completed: true, failed: false))
+        for target in [nil, "com.apple.UIKit.activity.CopyToPasteboard", "vn.com.vng.zingalo-other.share"] as [String?] {
+            XCTAssertFalse(ReportShareResult.sentToZalo(activity: target, completed: true, failed: false))
+        }
+        XCTAssertFalse(ReportShareResult.sentToZalo(activity: zalo, completed: false, failed: false))
+        XCTAssertFalse(ReportShareResult.sentToZalo(activity: zalo, completed: true, failed: true))
+    }
     func testPinnedCoordinatesPreferThePlaceOverTheCamera() {
         XCTAssertEqual(MapPin.read("10.75, 106.66"), MapPin(latitude: 10.75, longitude: 106.66))
         XCTAssertEqual(MapPin.read("https://www.google.com/maps/place/shop/@12,105,15z/data=!3d10.75!4d106.66"), MapPin.read("10.75,106.66"))
