@@ -14,12 +14,11 @@ struct PlaceMapPicker: View {
     let select: (CLLocationCoordinate2D) -> Void
     @Environment(\.dismiss) private var dismiss
     @StateObject private var gps = DeliveryGPS()
-    @State private var position: MapCameraPosition = .automatic
-    @State private var center: CLLocationCoordinate2D?
+    @StateObject private var camera = DeliveryPinCamera()
     @State private var query = ""
     @State private var results: [MKMapItem] = []
     @State private var message = ""
-    @State private var satellite = false
+    @AppStorage("sendeli.map.layer") private var layer = DeliveryMapLayer.street
     @State private var searching = false
     @State private var request: Task<Void, Never>?
     @FocusState private var editing: Bool
@@ -30,8 +29,8 @@ struct PlaceMapPicker: View {
                 HStack {
                     TextField("Tên tiệm, địa chỉ, tọa độ hoặc link Google Maps", text: $query)
                         .focused($editing).submitLabel(.search).onSubmit { search() }
-                        .textFieldStyle(.roundedBorder)
-                    Button { search() } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Tìm vị trí")
+                        .textFieldStyle(.roundedBorder).accessibilityIdentifier("pin.query")
+                    Button { search() } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Tìm vị trí").accessibilityIdentifier("pin.search")
                 }.padding(8)
                 if searching { ProgressView().padding(4) }
                 if !message.isEmpty { Text(message).font(.caption).padding(.horizontal) }
@@ -50,36 +49,41 @@ struct PlaceMapPicker: View {
                         }
                     }.frame(maxHeight: 160)
                 }
-                Map(position: $position)
-                    .mapStyle(satellite ? .hybrid(elevation: .flat) : .standard(elevation: .flat, pointsOfInterest: .all))
+                DeliveryPinMap(camera: camera, layer: layer)
                     .overlay { Image(systemName: "plus").font(.title2.bold()).foregroundStyle(.red).shadow(color: .white, radius: 1).allowsHitTesting(false) }
-                    .onMapCameraChange(frequency: .continuous) { center = $0.region.center }
+                    .overlay(alignment: .bottomTrailing) {
+                        if layer == .street {
+                            Link("© OpenStreetMap contributors", destination: URL(string: "https://www.openstreetmap.org/copyright")!)
+                                .font(.caption2).foregroundStyle(.primary).padding(3).background(.regularMaterial).buttonStyle(.plain)
+                        }
+                    }
                 HStack {
-                    Button(satellite ? "Đường phố" : "Vệ tinh") { satellite.toggle() }
+                    Menu {
+                        Picker("Nền bản đồ", selection: $layer) { ForEach(DeliveryMapLayer.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                    } label: { Label(layer.rawValue, systemImage: "map") }
                     Button { gps.request() } label: { Image(systemName: "location.fill") }.accessibilityLabel("Vị trí hiện tại")
                     if let url = MapPin.googleSearch(query.isEmpty ? address : query), !query.isEmpty || !address.isEmpty {
                         Link("Google Maps", destination: url)
                     }
                 }.buttonStyle(SweepPill(expanded: false)).padding(.top, 6)
-                Button("Dùng vị trí ghim") { if let center { select(center); dismiss() } }
-                    .buttonStyle(SweepPill()).disabled(center == nil).padding(8)
+                Button("Dùng vị trí ghim") { select(camera.center); dismiss() }
+                    .buttonStyle(SweepPill()).disabled(!camera.hasSelection).padding(8).accessibilityIdentifier("pin.save")
             }
             .navigationTitle("Tìm và ghim vị trí").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Huỷ") { dismiss() } } }
             .onAppear {
                 query = address
-                move(initial ?? CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009))
+                if let initial { move(initial) }
                 if initial == nil && !query.isEmpty { search() }
             }
-            .onChange(of: gps.coordinate?.latitude) { _, _ in if let point = gps.coordinate { move(point); results = [] } }
+            .onReceive(gps.$coordinate.compactMap { $0 }) { point in move(point); results = [] }
             .onChange(of: gps.problem) { _, error in message = error }
             .onChange(of: query) { _, _ in if editing { request?.cancel(); searching = false; results = []; message = "" } }
             .onDisappear { request?.cancel() }
         }
     }
     private func move(_ point: CLLocationCoordinate2D) {
-        center = point
-        position = .region(.init(center: point, span: .init(latitudeDelta: 0.008, longitudeDelta: 0.008)))
+        camera.move(point)
     }
     private func search() {
         request?.cancel(); editing = false; results = []; message = ""
@@ -105,7 +109,7 @@ struct PlaceMapPicker: View {
                 }
                 let lookup = MKLocalSearch.Request()
                 lookup.naturalLanguageQuery = text
-                if let center { lookup.region = .init(center: center, latitudinalMeters: 25000, longitudinalMeters: 25000) }
+                lookup.region = .init(center: camera.center, latitudinalMeters: 25000, longitudinalMeters: 25000)
                 let matches = try await MKLocalSearch(request: lookup).start().mapItems
                 try Task.checkCancellation()
                 results = Array(matches.prefix(8))

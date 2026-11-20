@@ -318,7 +318,7 @@ struct PlaceEditor: View {
                 if kind == "Chành xe", place == nil { customer = ""; address = ""; phone = "" }
                 lat = place?.latitude.map { String($0) } ?? ""; lon = place?.longitude.map { String($0) } ?? ""
             }
-            .onChange(of: gps.coordinate?.latitude) { _, _ in if let c = gps.coordinate { lat = String(c.latitude); lon = String(c.longitude) } }
+            .onReceive(gps.$coordinate.compactMap { $0 }) { c in lat = String(c.latitude); lon = String(c.longitude) }
             .sheet(isPresented: $map) {
                 PlaceMapPicker(initial: MapPin.read(lat + "," + lon).map {
                     CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)

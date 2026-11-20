@@ -8,6 +8,30 @@ final class SweepUITests: XCTestCase {
             return false
         }
     }
+    func testSavedPinUsesChosenCoordinateAndBackupAllowsPlacesAlone() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "-sendeli.map.layer", "Apple Maps"]
+        app.launch()
+        app.tabBars.buttons["Công cụ"].tap(); app.buttons["Vị trí"].tap()
+        app.buttons["Thêm vị trí"].tap(); app.buttons["Chọn trên bản đồ"].tap()
+        let save = app.buttons["pin.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10)); XCTAssertFalse(save.isEnabled)
+        let field = app.textFields["pin.query"]; field.tap(); field.typeText("10.75,106.66")
+        app.buttons["pin.search"].tap()
+        waitUntil(save, in: app) { $0.exists && $0.isEnabled }; save.tap()
+        XCTAssertTrue(app.textFields["Vĩ độ"].waitForExistence(timeout: 8))
+        let latitude = try XCTUnwrap(Double(app.textFields["Vĩ độ"].value as? String ?? ""))
+        let longitude = try XCTUnwrap(Double(app.textFields["Kinh độ"].value as? String ?? ""))
+        XCTAssertEqual(latitude, 10.75, accuracy: 0.00001)
+        XCTAssertEqual(longitude, 106.66, accuracy: 0.00001)
+        app.tabBars.buttons["Cài đặt"].tap()
+        app.buttons["Sao lưu và khôi phục sổ / ảnh"].tap()
+        app.buttons["Bỏ chọn tất cả"].tap()
+        let export = app.buttons["Xuất bản sao lưu"]; XCTAssertFalse(export.isEnabled)
+        app.switches["Vị trí đã lưu"].tap()
+        XCTAssertTrue(export.isEnabled); XCTAssertEqual(app.switches["Ảnh chứng từ và QR"].value as? String, "0")
+    }
     func testSendeliTwoTabsHistoryAndSearch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
