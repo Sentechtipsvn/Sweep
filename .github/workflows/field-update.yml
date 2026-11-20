@@ -29,11 +29,11 @@ jobs:
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-device \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee device-build.log
           python3 Tools/package_ipa.py --app build-device/Build/Products/Release-iphoneos/Sweep.app \
-            --output dist/Sendeli-0.9.0-build16.ipa
+            --output dist/Sendeli-0.9.0-build17.ipa
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Sendeli-0.9.0-build16
+          name: Sendeli-0.9.0-build17
           path: dist/
           retention-days: 30
       - name: Boot iPhone 11 simulator
@@ -73,7 +73,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Sendeli-build16-validation
+          name: Sendeli-build17-validation
           path: |
             device-build.log
             device-ui.log

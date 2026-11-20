@@ -146,15 +146,26 @@ private struct BackupPartPicker: View {
             selected = selected == available ? [] : available
         }
         ForEach(BackupPart.allCases.filter(available.contains), id: \.self) { part in
-            Toggle(part.title, isOn: Binding(get: { selected.contains(part) }, set: { enabled in
-                if enabled {
+            Button {
+                if !selected.contains(part) {
                     selected.insert(part)
                     if part == .orders { selected.insert(.photos) }
                 } else {
                     selected.remove(part)
                     if part == .photos { selected.remove(.orders) }
                 }
-            }))
+            } label: {
+                HStack {
+                    Text(part.title)
+                    Spacer()
+                    Image(systemName: selected.contains(part) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selected.contains(part) ? Color.accentColor : .secondary)
+                        .accessibilityHidden(true)
+                }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(selected.contains(part) ? "Đã chọn" : "Chưa chọn")
+            .accessibilityIdentifier("backup.part." + part.rawValue)
         }
     }
 }

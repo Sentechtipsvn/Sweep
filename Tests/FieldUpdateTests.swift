@@ -26,6 +26,7 @@ final class FieldUpdateTests: XCTestCase {
         XCTAssertEqual(MapPin.read("10.75, 106.66"), MapPin(latitude: 10.75, longitude: 106.66))
         XCTAssertEqual(MapPin.read("https://www.google.com/maps/place/shop/@12,105,15z/data=!3d10.75!4d106.66"), MapPin.read("10.75,106.66"))
         XCTAssertNil(MapPin.read("https://www.google.com/maps/@12,105,15z"))
+        XCTAssertNil(MapPin.read("https://maps.google.com/?ll=12,105"))
         XCTAssertNil(MapPin.read("92,0"))
         XCTAssertNil(MapPin.read("https://example.org/?q=10,105"))
     }

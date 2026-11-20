@@ -29,8 +29,8 @@ final class SweepUITests: XCTestCase {
         app.buttons["Sao lưu và khôi phục sổ / ảnh"].tap()
         app.buttons["Bỏ chọn tất cả"].tap()
         let export = app.buttons["Xuất bản sao lưu"]; XCTAssertFalse(export.isEnabled)
-        app.switches["Vị trí đã lưu"].tap()
-        XCTAssertTrue(export.isEnabled); XCTAssertEqual(app.switches["Ảnh chứng từ và QR"].value as? String, "0")
+        app.buttons["backup.part.places"].tap()
+        XCTAssertTrue(export.isEnabled); XCTAssertEqual(app.buttons["backup.part.photos"].value as? String, "Chưa chọn")
     }
     func testSendeliTwoTabsHistoryAndSearch() throws {
         continueAfterFailure = false
@@ -414,6 +414,7 @@ final class SweepUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--seed-delivery", "--qr-ui-testing"]
         app.launch()
+        app.buttons["filter.Đã giao"].tap()
         let order = app.buttons["order.TEST-001"]
         XCTAssertTrue(order.waitForExistence(timeout: 20)); order.tap()
         reveal(app.buttons["order.report"], in: app); app.buttons["order.report"].tap()
@@ -712,7 +713,10 @@ final class SweepUITests: XCTestCase {
         let done = app.buttons["keyboard.done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
-        waitUntil(app.keyboards.firstMatch, in: app) { !$0.exists || !$0.isHittable }
+        let screenBottom = app.windows.firstMatch.frame.maxY
+        waitUntil(app.keyboards.firstMatch, in: app) { keyboard in
+            !keyboard.exists || !keyboard.isHittable || keyboard.frame.minY >= screenBottom - 1
+        }
     }
 
     private func replace(_ field: XCUIElement, with value: String) {

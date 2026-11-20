@@ -29,7 +29,7 @@ struct MapPin: Equatable {
         if let point = pair(value) { return point }
         guard let url = URL(string: value), isMapLink(url),
               let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
-        for key in ["destination", "query", "q", "ll"] {
+        for key in ["destination", "query", "q"] {
             if let v = parts.queryItems?.first(where: { $0.name == key })?.value, let point = pair(v) { return point }
         }
         let path = url.absoluteString.removingPercentEncoding ?? url.absoluteString
