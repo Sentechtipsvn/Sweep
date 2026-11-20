@@ -100,7 +100,7 @@ final class DeliveryStore: ObservableObject {
         if let notice { successNotice = notice }
     }
     func announceSuccess(_ text: String) { successNotice = DeliverySuccessNotice(text: text) }
-    func create(_ draft: DeliveryOrder, image: URL?, signedAt: Date?, allowRepeatedImage: Bool = false) async -> UUID? {
+    func create(_ draft: DeliveryOrder, image: URL?, signedAt: Date?, allowRepeatedImage: Bool = false, asset: String? = nil) async -> UUID? {
         guard !busy, !blocked else { return nil }
         if let old = ledger.orders.first(where: { ($0.sourceID != nil && $0.sourceID == draft.sourceID) || DeliveryOrder.normalizedCode($0.code) == DeliveryOrder.normalizedCode(draft.code) }) { return old.id }
         busy = true; defer { busy = false }
@@ -120,13 +120,15 @@ final class DeliveryStore: ObservableObject {
             var next = ledger
             let id = try next.insert(result)
             if let signedAt { try next.sign(id, at: signedAt) }
-            try database!.save(next); publishSaved(next, text: "Đã nhận đơn · " + result.code); return id
+            try database!.save(next)
+            if let file { ReportOriginals.remember(asset, file: file) }
+            publishSaved(next, text: "Đã nhận đơn · " + result.code); return id
         } catch {
             if let file { try? FileManager.default.removeItem(at: url(file)) }
             message = error.localizedDescription; return nil
         }
     }
-    func attach(_ image: URL, role: EvidenceRole, to id: UUID?) async {
+    func attach(_ image: URL, role: EvidenceRole, to id: UUID?, asset: String? = nil) async {
         guard !busy, !blocked else { return }
         busy = true; defer { busy = false }
         var file: DeliveryEvidence?
@@ -143,7 +145,9 @@ final class DeliveryStore: ObservableObject {
                 next.orders[i].evidence.append(imported); next.orders[i].revision += 1
                 next.record("Thêm chứng từ", orderID: id, "\(role.rawValue) · \(imported.sha256)")
             } else { next.settings.qr = imported; next.record("Cập nhật QR công ty", imported.sha256) }
-            try database!.save(next); publishSaved(next)
+            try database!.save(next)
+            if id != nil { ReportOriginals.remember(asset, file: imported) }
+            publishSaved(next)
         } catch {
             if let file { try? FileManager.default.removeItem(at: url(file)) }; message = error.localizedDescription
         }
@@ -160,39 +164,55 @@ final class DeliveryStore: ObservableObject {
             try database!.save(next); ledger = next; return report
         } catch { message = error.localizedDescription; return nil }
     }
-    func exportBackup() async -> URL? {
+    func exportBackup(parts: Set<BackupPart> = BackupPart.all) async -> URL? {
         guard !busy, !blocked else { return nil }
         busy = true; defer { busy = false }
         let snapshot = ledger, directory = evidenceDirectory
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Sweep-\(UUID().uuidString.prefix(8)).sweepbackup")
         do {
-            try await Task.detached(priority: .utility) { try DeliveryBackup.write(snapshot, evidence: directory, to: destination) }.value
+            try await Task.detached(priority: .utility) { try DeliveryBackup.write(snapshot, evidence: directory, to: destination, parts: parts) }.value
             announceSuccess("Đã tạo bản sao lưu sổ")
             return destination
         } catch { message = error.localizedDescription; return nil }
     }
-    func restore(_ prepared: DeliveryBackup.Prepared) async -> Bool {
+    func restore(_ prepared: DeliveryBackup.Prepared, parts: Set<BackupPart> = BackupPart.all) async -> Bool {
         guard !busy, !blocked else { return false }
         busy = true; defer { busy = false }
+        var installed: [URL] = []
         do {
+            guard parts.isSubset(of: prepared.parts) else { throw DeliveryError.invalid("Bản sao thiếu mục đã chọn.") }
             let previous = ledger, directory = evidenceDirectory
+            var next = try previous.restoring(prepared.ledger, parts: parts)
             let recovery = root.appendingPathComponent("Before-restore-\(UUID().uuidString).sweepbackup")
-            try await Task.detached(priority: .utility) {
+            installed = try await Task.detached(priority: .utility) {
                 try DeliveryBackup.write(previous, evidence: directory, to: recovery)
-                for file in prepared.ledger.allEvidence {
-                    let target = directory.appendingPathComponent(file.filename)
-                    if FileManager.default.fileExists(atPath: target.path) { try EvidenceFiles.verify(file, directory: directory) }
-                    else { try FileManager.default.copyItem(at: prepared.staging.appendingPathComponent(file.filename), to: target) }
+                guard parts.contains(.photos) else { return [URL]() }
+                var added: [URL] = []
+                do {
+                    for file in prepared.ledger.allEvidence {
+                        let target = directory.appendingPathComponent(file.filename)
+                        if FileManager.default.fileExists(atPath: target.path) { try EvidenceFiles.verify(file, directory: directory) }
+                        else {
+                            try FileManager.default.copyItem(at: prepared.staging.appendingPathComponent(file.filename), to: target)
+                            added.append(target)
+                        }
+                    }
+                    return added
+                } catch {
+                    for url in added { try? FileManager.default.removeItem(at: url) }
+                    throw error
                 }
             }.value
-            var next = prepared.ledger
             next.schema = 3
             next.record("Khôi phục sổ", "Bản trước khi khôi phục: \(recovery.lastPathComponent)")
             try database!.save(next, replacing: true); ledger = next
             celebrationHistory.seed(next)
             announceSuccess("Đã khôi phục sổ giao hàng")
             return true
-        } catch { message = error.localizedDescription; return false }
+        } catch {
+            for url in installed { try? FileManager.default.removeItem(at: url) }
+            message = error.localizedDescription; return false
+        }
     }
 }
 

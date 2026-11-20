@@ -35,31 +35,31 @@ struct DeliveryFlowView: View {
                         VStack(spacing: 0) {
                             OrderQRView(id: id, suggested: order.remaining > 0 ? order.remaining : VietQR.suggestedAmount(for: order))
                             Button("Đã nhận chuyển khoản…") { bankAmount = String(order.remaining); confirmation = .bank }
-                                .buttonStyle(SweepPill(selected: true)).padding().background(.bar)
+                                .buttonStyle(SweepPill()).padding().background(.bar)
                                 .accessibilityIdentifier("flow.confirmTransfer")
                                 .disabled(order.remaining <= 0)
                         }
                     } else if stage == .proof {
                         SweepGroupedScroll {
                             SweepCard {
-                                Text(order.customer).font(.headline)
+                                Text(order.displayCustomer).font(.subheadline.weight(.semibold))
                                 Text(order.shareText())
                             }
                             ForEach(order.requiredReportRoles, id: \.self) { role in
                                 SweepCard(title: role.rawValue) {
                                     ForEach(order.activeEvidence.filter { $0.role == role }) { file in EvidenceThumbnail(url: store.url(file), height: 150) }
-                                    EvidencePicker(title: role == .invoice ? "Phiếu có số tiền" : role.rawValue) { url in await store.attach(url, role: role, to: id) }
+                                    EvidencePicker(title: role == .invoice ? "Phiếu có số tiền" : role.rawValue) { url, asset in await store.attach(url, role: role, to: id, asset: asset) }
                                 }
                             }
                             SweepCard {
-                                NavigationLink { OrderReportView(id: id) } label: { Label("Kiểm tra và gửi nhóm", systemImage: "square.and.arrow.up") }
+                                NavigationLink { OrderReportView(id: id, didSend: { dismiss() }) } label: { Label("Kiểm tra và gửi nhóm", systemImage: "square.and.arrow.up") }
                                     .disabled(!order.missingEvidence().isEmpty).accessibilityIdentifier("flow.report")
                             }
                         }
                     } else {
                         SweepGroupedScroll {
                             SweepCard {
-                                Text(order.customer).font(.headline)
+                                Text(order.displayCustomer).font(.subheadline.weight(.semibold))
                                 LabeledContent("Tổng đơn", value: VND.format(order.total))
                                 if order.cash > 0 { LabeledContent("Tiền mặt đã ghi", value: VND.format(order.cash)) }
                                 if order.bank > 0 { LabeledContent("Chuyển khoản đã ghi", value: VND.format(order.bank)) }
@@ -67,7 +67,7 @@ struct DeliveryFlowView: View {
                             if order.total <= 0 { Text("Kiểm tra tổng tiền trong Sửa đơn trước khi chốt.").foregroundStyle(.red) }
                             if method == .cash {
                                 SweepCard {
-                                    Button("Thu đủ tiền mặt") { if canStartCash(order) { confirmation = .cash } }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.cashFull")
+                                    Button("Thu đủ tiền mặt") { if canStartCash(order) { confirmation = .cash } }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.cashFull")
                                     Button("Thu một phần") { if canStartCash(order) { partial = String(order.cash); stage = .partial } }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.partial")
                                 }
                                 if stage == .partial {
@@ -80,14 +80,14 @@ struct DeliveryFlowView: View {
                                 }
                             } else if method == .bank {
                                 SweepCard {
-                                    Button(order.remaining > 0 ? "Chuyển khoản ngay" : "Xem lại QR chuyển khoản") { stage = .qr }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.bankNow")
+                                    Button(order.remaining > 0 ? "Chuyển khoản ngay" : "Xem lại QR chuyển khoản") { stage = .qr }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.bankNow")
                                     Button("Chuyển khoản sau…") { requestLater(order) }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.bankLater")
                                     if order.bank > 0 { Button("Tiếp tục gửi chứng từ") { stage = .proof }.buttonStyle(SweepPill()) }
                                 }
                             } else {
                                 SweepCard {
                                     Text("Gửi phiếu nhà xe đã ký và ảnh hàng đã gửi. Bán hàng theo dõi tiền.").font(.subheadline)
-                                    Button("Đã giao hàng cho chành…") { requestFreight(order) }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("flow.freight")
+                                    Button("Đã giao hàng cho chành…") { requestFreight(order) }.buttonStyle(SweepPill()).accessibilityIdentifier("flow.freight")
                                 }
                             }
                             SweepCard { Button("Huỷ", role: .cancel) { dismiss() } }

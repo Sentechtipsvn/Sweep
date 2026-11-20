@@ -15,6 +15,8 @@ enum AttendanceReminderPolicy {
     static func needsEntry(_ ledger: DeliveryLedger, at date: Date) -> Bool {
         let calendar = DeliveryMonth.calendar
         guard calendar.component(.weekday, from: date) != 1 else { return false }
+        let daysOff = VietnamWorkCalendar.daysOff(year: calendar.component(.year, from: date), options: ledger.settings.holidays ?? WorkHolidayOptions())
+        guard !daysOff.contains(calendar.startOfDay(for: date)) else { return false }
         return ledger.payroll?.period(date).entry(date) == nil
     }
     static func showDot(_ ledger: DeliveryLedger, now: Date) -> Bool {
@@ -25,7 +27,7 @@ enum AttendanceReminderPolicy {
         let c = DeliveryMonth.calendar
         return (0..<30).compactMap { offset in
             guard let day = c.date(byAdding: .day, value: offset, to: c.startOfDay(for: now)),
-                  let date = c.date(bySettingHour: 17, minute: 30, second: 0, of: day), date > now,
+                  let date = c.date(bySettingHour: 8, minute: 0, second: 0, of: day), date > now,
                   needsEntry(ledger, at: date) else { return nil }
             return date
         }

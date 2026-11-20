@@ -56,7 +56,7 @@ struct AllDeliveryOrdersView: View {
         List {
             SendeliSearchField(text: $query).listRowBackground(Color.clear)
             ForEach(store.ledger.orders.filter { query.isEmpty || ($0.customer + " " + $0.code + " " + $0.phone).localizedStandardContains(query) }.sorted { $0.importedAt > $1.importedAt }) { order in
-                NavigationLink { OrderDetailView(id: order.id) } label: { SendeliOrderRow(order: order) }
+                NavigationLink { OrderDetailView(id: order.id) } label: { SendeliOrderRow(order: order) }.buttonStyle(.plain)
                     .accessibilityIdentifier("order.\(order.code)")
             }
         }.navigationTitle("Tất cả đơn hàng")
@@ -66,7 +66,7 @@ struct SendeliOrderRow: View {
     let order: DeliveryOrder
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack { Text(order.customer).font(.headline); Spacer(); Text(VND.format(order.total)).font(.subheadline.bold()).monospacedDigit() }
+            HStack { Text(order.displayCustomer).font(.subheadline.weight(.semibold)); Spacer(); Text(VND.format(order.total)).font(.subheadline.bold()).monospacedDigit() }
             Text(order.code).font(.caption).foregroundStyle(.secondary)
             HStack {
                 SweepOrderStatus(order: order); Spacer()

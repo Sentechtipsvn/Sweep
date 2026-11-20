@@ -17,7 +17,7 @@ struct OrderQRView: View {
         SweepGroupedScroll {
             if let order {
                 SweepCard {
-                    Text(order.customer).font(.headline)
+                    Text(order.displayCustomer).font(.subheadline.weight(.semibold))
                     LabeledContent("Mã phiếu", value: order.code)
                     LabeledContent("Tổng đơn", value: VND.format(order.total))
                     LabeledContent("Còn lại theo ghi nhận", value: VND.format(order.remaining))

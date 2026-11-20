@@ -152,7 +152,7 @@ struct ContactEditor: View {
                     Text("Thử mở bằng số điện thoại; nếu không đúng người, dùng liên kết từ QR hoặc sao chép số để tìm. QR được xem trước khi lưu.").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Button("Lưu liên hệ") { saveCheckingDuplicate() }.buttonStyle(SweepPill(selected: true))
+            Button("Lưu liên hệ") { saveCheckingDuplicate() }.buttonStyle(SweepPill())
             if let contact { Button("Xoá liên hệ", role: .destructive) { remove = true }
                 .alert("Xoá \(contact.name)?", isPresented: $remove) {
                     Button("Xoá", role: .destructive) { if store.change({ $0.contacts?.removeAll { $0.id == contact.id } }) { dismiss() } }
@@ -283,11 +283,9 @@ struct PlaceEditor: View {
     @State private var kind = "Khách hàng"
     @State private var lat = ""
     @State private var lon = ""
+    @State private var initialized = false
     @State private var map = false
     @State private var remove = false
-    @State private var mapCenter = CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009)
-    @State private var position: MapCameraPosition = .automatic
-    @State private var locating = false
     var body: some View {
         Form {
             Section {
@@ -298,14 +296,13 @@ struct PlaceEditor: View {
             }
             Section("Vị trí chính xác · tuỳ chọn") {
                 Button("Lấy vị trí hiện tại") { gps.request() }
-                Button("Chọn trên bản đồ") { prepareMap() }
-                if locating { ProgressView() }
+                Button("Chọn trên bản đồ") { map = true }
                 if !gps.problem.isEmpty { Text(gps.problem).font(.caption).foregroundStyle(.red) }
                 if let accuracy = gps.accuracy { Text("Độ chính xác GPS khoảng \(Int(accuracy.rounded())) m. Kiểm tra lại điểm trước khi lưu.").font(.caption).foregroundStyle(.secondary) }
                 TextField("Vĩ độ", text: $lat).keyboardType(.numbersAndPunctuation)
                 TextField("Kinh độ", text: $lon).keyboardType(.numbersAndPunctuation)
             }
-            Button("Lưu vị trí") { save() }.buttonStyle(SweepPill(selected: true))
+            Button("Lưu vị trí") { save() }.buttonStyle(SweepPill())
             if let place { Button("Xoá vị trí", role: .destructive) { remove = true }
                 .alert("Xoá vị trí đã lưu?", isPresented: $remove) {
                     Button("Xoá", role: .destructive) { if store.change({ $0.places?.removeAll { $0.id == place.id } }) { dismiss() } }
@@ -315,6 +312,7 @@ struct PlaceEditor: View {
         }.navigationTitle("Lưu vị trí").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .onAppear {
+                guard !initialized else { return }; initialized = true
                 customer = place?.customer ?? order?.customer ?? ""; phone = place?.phone ?? order?.phone ?? ""; address = place?.address ?? order?.address ?? ""
                 kind = place?.kind ?? (order?.settlement?.route == .freight ? "Chành xe" : "Khách hàng")
                 if kind == "Chành xe", place == nil { customer = ""; address = ""; phone = "" }
@@ -322,30 +320,13 @@ struct PlaceEditor: View {
             }
             .onChange(of: gps.coordinate?.latitude) { _, _ in if let c = gps.coordinate { lat = String(c.latitude); lon = String(c.longitude) } }
             .sheet(isPresented: $map) {
-                NavigationStack {
-                    Map(position: $position).overlay { Image(systemName: "mappin.circle.fill").font(.largeTitle).foregroundStyle(.red).allowsHitTesting(false) }
-                        .onMapCameraChange(frequency: .onEnd) { context in mapCenter = context.region.center }
-                        .safeAreaInset(edge: .bottom) { Button("Dùng vị trí ghim") { lat = String(mapCenter.latitude); lon = String(mapCenter.longitude); map = false }.buttonStyle(SweepPill(selected: true)).padding().background(.bar) }
-                        .navigationTitle("Kéo bản đồ đến vị trí").navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Huỷ") { map = false } } }
+                PlaceMapPicker(initial: MapPin.read(lat + "," + lon).map {
+                    CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                }, address: address.isEmpty ? customer : address) { point in
+                    lat = String(point.latitude); lon = String(point.longitude)
                 }
             }
     }
-    private func prepareMap() {
-        if let a = Double(lat), let b = Double(lon) { mapCenter = CLLocationCoordinate2D(latitude: a, longitude: b); showMap(); return }
-        guard !address.isEmpty else { showMap(); return }
-        locating = true
-        Task {
-            defer { locating = false }
-            do {
-                let request = MKLocalSearch.Request(); request.naturalLanguageQuery = address
-                let results = try await MKLocalSearch(request: request).start()
-                if let item = results.mapItems.first { mapCenter = item.placemark.coordinate }
-                showMap()
-            } catch { store.message = "Chưa tìm được địa chỉ. Sếp có thể kéo bản đồ để chọn."; showMap() }
-        }
-    }
-    private func showMap() { position = .region(MKCoordinateRegion(center: mapCenter, span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012))); map = true }
     private func save() {
         if (!lat.isEmpty && Double(lat) == nil) || (!lon.isEmpty && Double(lon) == nil) { store.message = "Tọa độ phải là số, dùng dấu chấm thập phân."; return }
         let value = DeliveryPlace(id: place?.id ?? UUID(), customer: customer, phone: phone, address: address, kind: kind, latitude: Double(lat), longitude: Double(lon))

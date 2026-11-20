@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import QuickLook
 
 struct DeliverySettingsView: View {
     @EnvironmentObject private var store: DeliveryStore
@@ -43,7 +44,7 @@ struct DeliverySettingsView: View {
             }
             Section("Ảnh QR công ty") {
                 if let qr = store.ledger.settings.qr { EvidenceThumbnail(url: store.url(qr), height: 240) }
-                EvidencePicker(title: "Lưu / thay ảnh QR") { url in await store.attach(url, role: .companyQR, to: nil) }
+                EvidencePicker(title: "Lưu / thay ảnh QR") { url, _ in await store.attach(url, role: .companyQR, to: nil) }
                 NavigationLink("Xem màn hình đưa khách") { BankCompanyView() }
             }
         }
@@ -63,23 +64,38 @@ struct DeliveryBackupView: View {
     @State private var prepared: DeliveryBackup.Prepared?
     @State private var sharing: DeliveryShare?
     @State private var confirm = false
+    @State private var exporting = BackupPart.all
+    @State private var restoring = Set<BackupPart>()
+    @State private var preview: URL?
     @State private var recoveries: [URL] = []
     var body: some View {
         Form {
-            Section("Sao lưu sổ và toàn bộ chứng từ") {
+            Section("Chọn dữ liệu sao lưu") {
+                BackupPartPicker(available: BackupPart.all, selected: $exporting)
                 LabeledContent("Hồ sơ", value: "\(store.ledger.orders.count)")
                 LabeledContent("Ảnh bền vững", value: "\(store.ledger.allEvidence.count)")
-                Button("Xuất bản sao lưu đầy đủ") { Task { if let url = await store.exportBackup() { sharing = DeliveryShare(items: [url]) } } }
-                Text("Chọn Lưu vào Tệp trong bảng chia sẻ, rồi chọn nơi Sếp giữ bản sao. Bản sao gồm thông tin khách và ảnh; giữ ở nơi Sếp quản lý.").font(.caption).foregroundStyle(.secondary)
+                Button("Xuất bản sao lưu") { Task { if let url = await store.exportBackup(parts: exporting) { sharing = DeliveryShare(items: [url]) } } }.disabled(exporting.isEmpty)
+                Text("Chọn Lưu vào Tệp trong bảng chia sẻ, rồi chọn nơi Sếp giữ bản sao. Chỉ các mục được chọn sẽ được ghi vào tệp.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Khôi phục từ .sweepbackup") {
                 Button("Chọn bản sao lưu để kiểm tra") { importing = true }
                 if loading || store.busy { ProgressView("Đang kiểm tra dữ liệu và ảnh…") }
                 if let prepared {
                     Text("Đã kiểm tra \(prepared.ledger.orders.count) hồ sơ và \(prepared.ledger.allEvidence.count) ảnh, đúng hash.")
-                    Button("Thay sổ hiện tại bằng bản đã kiểm tra…", role: .destructive) { confirm = true }
+                    BackupPartPicker(available: prepared.parts, selected: $restoring)
+                    Button("Khôi phục các mục đã chọn…") { confirm = true }.disabled(restoring.isEmpty)
                 }
-                Text("Khôi phục thay toàn bộ sổ, không gộp hai sổ. Sendeli giữ một bản trước khôi phục trên máy; ảnh thiếu hoặc sai hash sẽ bị từ chối trước khi thay dữ liệu.").font(.caption).foregroundStyle(.secondary)
+                Text("Vị trí, danh bạ, công lương và đơn đã chọn sẽ thay mục tương ứng. Nếu chỉ chọn ảnh, ảnh được bổ sung vào đơn trùng ID. Ảnh còn lại có thể mở bên dưới.").font(.caption).foregroundStyle(.secondary)
+            }
+            if let photos = store.ledger.unfiledPhotos, !photos.isEmpty {
+                Section("Ảnh khôi phục chưa gắn đơn") {
+                    ForEach(photos, id: \.evidence.id) { photo in
+                        Button { preview = store.url(photo.evidence) } label: {
+                            HStack { EvidenceThumbnail(url: store.url(photo.evidence), height: 56).frame(width: 68)
+                                Text(photo.evidence.role.rawValue) }
+                        }
+                    }
+                }
             }
             if !recoveries.isEmpty {
                 Section("Bản giữ trước các lần khôi phục") {
@@ -92,6 +108,7 @@ struct DeliveryBackupView: View {
             }
         }
         .navigationTitle("Sao lưu và khôi phục").navigationBarTitleDisplayMode(.inline)
+        .quickLookPreview($preview)
         .disabled(store.busy || loading)
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .item]) { result in
@@ -101,18 +118,43 @@ struct DeliveryBackupView: View {
                 do {
                     let source = try result.get()
                     let staging = FileManager.default.temporaryDirectory.appendingPathComponent("Restore-\(UUID().uuidString)", isDirectory: true)
-                    prepared = try await Task.detached(priority: .utility) { try DeliveryBackup.prepare(source, staging: staging) }.value
-                } catch { store.message = error.localizedDescription }
+                    let archive = try await Task.detached(priority: .utility) { try DeliveryBackup.prepare(source, staging: staging) }.value
+                    prepared = archive; restoring = archive.parts
+                } catch CocoaError.userCancelled { } catch { store.message = error.localizedDescription }
             }
         }
-        .alert("Thay toàn bộ sổ hiện tại?", isPresented: $confirm) {
+        .alert("Khôi phục các mục đã chọn?", isPresented: $confirm) {
             Button("Khôi phục bản đã kiểm tra", role: .destructive) {
-                Task { if let value = prepared, await store.restore(value) { try? FileManager.default.removeItem(at: value.staging); prepared = nil; store.message = "Đã khôi phục đầy đủ sổ và ảnh." } }
+                Task { if let value = prepared, await store.restore(value, parts: restoring) { try? FileManager.default.removeItem(at: value.staging); prepared = nil; refreshRecoveries() } }
             }
             Button("Giữ sổ đang dùng", role: .cancel) {}
-        } message: { Text("Sổ \(store.ledger.orders.count) hồ sơ hiện tại sẽ được thay bằng \(prepared?.ledger.orders.count ?? 0) hồ sơ của bản sao. Xuất bản hiện tại ra Tệp trước nếu Sếp cần giữ riêng.") }
-        .onAppear {
-            recoveries = ((try? FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent.hasPrefix("Before-") && $0.pathExtension == "sweepbackup" }
+        } message: {
+            Text(BackupPart.allCases.filter(restoring.contains).map(\.title).joined(separator: " · ") + ". Sendeli giữ một bản sổ trước khi khôi phục.")
+        }
+        .onAppear { refreshRecoveries() }
+    }
+    private func refreshRecoveries() {
+        recoveries = ((try? FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent.hasPrefix("Before-") && $0.pathExtension == "sweepbackup" }
+    }
+}
+
+private struct BackupPartPicker: View {
+    let available: Set<BackupPart>
+    @Binding var selected: Set<BackupPart>
+    var body: some View {
+        Button(selected == available ? "Bỏ chọn tất cả" : "Chọn tất cả") {
+            selected = selected == available ? [] : available
+        }
+        ForEach(BackupPart.allCases.filter(available.contains), id: \.self) { part in
+            Toggle(part.title, isOn: Binding(get: { selected.contains(part) }, set: { enabled in
+                if enabled {
+                    selected.insert(part)
+                    if part == .orders { selected.insert(.photos) }
+                } else {
+                    selected.remove(part)
+                    if part == .photos { selected.remove(.orders) }
+                }
+            }))
         }
     }
 }

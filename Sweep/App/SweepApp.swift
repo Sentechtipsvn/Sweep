@@ -19,6 +19,7 @@ struct SweepApp: App {
                 NavigationStack(path: $router.settings) { SettingsView().navigationDestination(for: String.self) { _ in RenewalView() } }
                     .tabItem { Label("Cài đặt", systemImage: "gearshape") }.tag(3)
             }
+            .buttonStyle(SweepCompactPill())
             .tint(SweepStyle.blue)
             .environmentObject(library)
             .environmentObject(delivery)
@@ -30,6 +31,7 @@ struct SweepApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .sweepRenewalSelected)) { _ in router.tab = 3; router.settings = ["renewal"] }
             .onReceive(NotificationCenter.default.publisher(for: .sendeliAttendanceSelected)) { _ in router.tab = 2; router.tools = ["payroll"] }
             .onChange(of: delivery.ledger.payroll) { _, _ in Task { await attendance.refresh(delivery.ledger) } }
+            .onChange(of: delivery.ledger.settings.holidays) { _, _ in Task { await attendance.refresh(delivery.ledger) } }
             .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in Task { await attendance.refresh(delivery.ledger) } }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await renewal.refresh(); await attendance.refresh(delivery.ledger) } } }
             .background(DeliveryFeedback(store: delivery).frame(width: 0, height: 0))

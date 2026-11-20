@@ -64,7 +64,7 @@ struct EvidenceThumbnail: View {
 /// All providers are copied while their read grant/Transferable is alive.
 struct EvidencePicker: View {
     let title: String
-    let onChoose: (URL) async -> Void
+    let onChoose: (URL, String?) async -> Void
     @EnvironmentObject private var store: DeliveryStore
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var selection: PhotosPickerItem?
@@ -92,7 +92,7 @@ struct EvidencePicker: View {
                     }
                     guard let ready else { throw DeliveryError.invalid("Chưa tải được ảnh. Mở ảnh trong thư viện rồi chọn lại.") }
                     defer { try? FileManager.default.removeItem(at: ready) }
-                    await onChoose(ready)
+                    await onChoose(ready, item.itemIdentifier)
                 } catch { store.message = error.localizedDescription }
             }
         }
@@ -105,14 +105,14 @@ struct EvidencePicker: View {
                     do {
                         let ready = try SharedInvoiceLoader.copyImage(image)
                         defer { try? FileManager.default.removeItem(at: ready) }
-                        await onChoose(ready)
+                        await onChoose(ready, nil)
                     } catch { store.message = error.localizedDescription }
                 }
             }.ignoresSafeArea()
         }
     }
     private var photoButton: some View {
-        PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .compatible) {
+        PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .compatible, photoLibrary: .shared()) {
             sourceLabel("Chọn ảnh", icon: "photo.on.rectangle")
         }.accessibilityIdentifier("evidence.photos")
     }
@@ -153,7 +153,18 @@ private struct EvidenceCamera: UIViewControllerRepresentable {
 struct DeliveryShare: Identifiable { let id = UUID(); let items: [Any] }
 struct DeliveryShareSheet: UIViewControllerRepresentable {
     let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
+    @Environment(\.dismiss) private var dismiss
+    var completion: ((UIActivity.ActivityType?, Bool, Error?) -> Void)? = nil
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        controller.completionWithItemsHandler = { activity, completed, _, error in
+            DispatchQueue.main.async {
+                if let completion { completion(activity, completed, error) }
+                else { dismiss() }
+            }
+        }
+        return controller
+    }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 

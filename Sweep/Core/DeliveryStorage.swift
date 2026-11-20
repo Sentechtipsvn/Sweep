@@ -147,17 +147,22 @@ enum EvidenceFiles {
 /// Streaming, versioned archive: magic, manifest length, manifest SHA256, manifest, original image bytes.
 /// No decoding of arbitrary paths, no ZIP expansion and no unbounded allocation for image payloads.
 enum DeliveryBackup {
-    struct Manifest: Codable { var version = 3; var createdAt = Date(); var ledger: DeliveryLedger }
+    struct Manifest: Codable { var version: Int; var createdAt = Date(); var ledger: DeliveryLedger; var parts: Set<BackupPart>? }
     final class Prepared: @unchecked Sendable {
         let ledger: DeliveryLedger
         let staging: URL
-        init(ledger: DeliveryLedger, staging: URL) { self.ledger = ledger; self.staging = staging }
+        let parts: Set<BackupPart>
+        init(ledger: DeliveryLedger, staging: URL, parts: Set<BackupPart> = BackupPart.all) {
+            self.ledger = ledger; self.staging = staging; self.parts = parts
+        }
         deinit { try? FileManager.default.removeItem(at: staging) }
     }
     static let magic = Data("SWEEP001".utf8)
-    static func write(_ ledger: DeliveryLedger, evidence: URL, to destination: URL, version: Int = 3) throws {
+    static func write(_ source: DeliveryLedger, evidence: URL, to destination: URL, version: Int = 4,
+                      parts: Set<BackupPart> = BackupPart.all) throws {
+        let ledger = try source.selectedBackup(parts)
         try ledger.validate()
-        let manifest = try DeliveryCoding.encode(Manifest(version: version, ledger: ledger))
+        let manifest = try DeliveryCoding.encode(Manifest(version: version, ledger: ledger, parts: version >= 4 ? parts : nil))
         guard manifest.count <= 32 * 1024 * 1024 else { throw DeliveryError.invalid("Sổ quá lớn cho định dạng sao lưu này.") }
         FileManager.default.createFile(atPath: destination.path, contents: nil)
         let handle = try FileHandle(forWritingTo: destination)
@@ -202,7 +207,10 @@ enum DeliveryBackup {
             let expected = try read(32, from: handle), data = try read(Int(length), from: handle)
             guard Data(SHA256.hash(data: data)) == expected else { throw DeliveryError.invalid("Thông tin sổ bị sai hash.") }
             let manifest = try DeliveryCoding.decode(Manifest.self, from: data)
-            guard (1...3).contains(manifest.version) else { throw DeliveryError.invalid("Bản sao lưu cần phiên bản Sweep mới hơn.") }
+            guard (1...4).contains(manifest.version) else { throw DeliveryError.invalid("Bản sao lưu cần phiên bản Sweep mới hơn.") }
+            let parts = manifest.parts ?? BackupPart.all
+            try BackupPart.check(parts)
+            guard manifest.version < 4 || manifest.parts != nil else { throw DeliveryError.invalid("Thiếu danh mục sao lưu.") }
             try manifest.ledger.validate()
             for file in manifest.ledger.allEvidence {
                 let target = staging.appendingPathComponent(file.filename)
@@ -218,7 +226,7 @@ enum DeliveryBackup {
                 _ = try EvidenceFiles.imageExtension(target)
             }
             guard try handle.read(upToCount: 1)?.isEmpty != false else { throw DeliveryError.invalid("Bản sao lưu có dữ liệu thừa.") }
-            return Prepared(ledger: manifest.ledger, staging: staging)
+            return Prepared(ledger: manifest.ledger, staging: staging, parts: parts)
         } catch { try? FileManager.default.removeItem(at: staging); throw error }
     }
 }

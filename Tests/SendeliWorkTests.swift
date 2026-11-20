@@ -24,15 +24,15 @@ final class SendeliWorkTests: XCTestCase {
             XCTAssertFalse(AttendanceReminderPolicy.showDot(ledger, now: date("2026-11-16T03:00:00Z")))
         }
     }
-    func testReminderDatesAreFutureAt1730AndExcludeSundayAndRecordedDays() throws {
+    func testReminderDatesAreFutureAt0800AndExcludeSundayAndRecordedDays() throws {
         var ledger = DeliveryLedger(); let now = date("2026-11-16T03:00:00Z")
         try ledger.markAttendance(now, state: .leave, now: now)
         let dates = AttendanceReminderPolicy.dates(ledger, now: now)
         XCTAssertFalse(dates.isEmpty); XCTAssertLessThan(dates.count, 30)
         for value in dates {
             let c = DeliveryMonth.calendar
-            XCTAssertGreaterThan(value, now); XCTAssertEqual(c.component(.hour, from: value), 17)
-            XCTAssertEqual(c.component(.minute, from: value), 30); XCTAssertNotEqual(c.component(.weekday, from: value), 1)
+            XCTAssertGreaterThan(value, now); XCTAssertEqual(c.component(.hour, from: value), 8)
+            XCTAssertEqual(c.component(.minute, from: value), 0); XCTAssertNotEqual(c.component(.weekday, from: value), 1)
             XCTAssertFalse(c.isDate(value, inSameDayAs: now))
         }
     }

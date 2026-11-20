@@ -47,7 +47,7 @@ struct OrderDetailView: View {
                                         } label: { Image(systemName: "ellipsis.circle.fill").font(.title).symbolRenderingMode(.palette).foregroundStyle(.blue, .white).padding(8) }.buttonStyle(.borderless).accessibilityLabel("Liên hệ bán hàng")
                                     }
                             }
-                            HStack { Text(order.customer).font(.title3.bold()); Spacer(); Text(VND.format(order.total)).font(.headline).monospacedDigit() }
+                            HStack { Text(order.displayCustomer).font(.subheadline.weight(.semibold)); Spacer(); Text(VND.format(order.total)).font(.headline).monospacedDigit() }
                             Text(order.code).font(.caption).foregroundStyle(.secondary)
                             SweepOrderStatus(order: order).font(.subheadline)
                             if !order.address.isEmpty {
@@ -60,7 +60,7 @@ struct OrderDetailView: View {
                         if order.voidReason == nil {
                             SweepCard {
                                 ForEach([DeliveryMethod.cash, .bank, .freight]) { item in
-                                    Button(item.rawValue) { beginDelivery(item) }.buttonStyle(SweepPill(selected: true)).accessibilityIdentifier("method.\(item.id)")
+                                    Button(item.rawValue) { beginDelivery(item) }.buttonStyle(SweepPill()).accessibilityIdentifier("method.\(item.id)")
                                 }
                                 if order.activeAssignments.isEmpty {
                                     Text("Chọn cách giao để xác nhận ký nhận trước khi tiếp tục.")
@@ -105,7 +105,7 @@ struct OrderDetailView: View {
                                         }.animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: files.map(\.id))
                                     }
                                 }
-                                if order.voidReason == nil { EvidencePicker(title: "Bổ sung \(role.rawValue.lowercased())") { url in await store.attach(url, role: role, to: id) } }
+                                if order.voidReason == nil { EvidencePicker(title: "Bổ sung \(role.rawValue.lowercased())") { url, asset in await store.attach(url, role: role, to: id, asset: asset) } }
                             }
                         }
                         if order.requiresReport { SweepCard(title: "Chia sẻ") {
@@ -307,7 +307,7 @@ struct SettlementView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(order.customer) {
+                Section(order.displayCustomer) {
                     LabeledContent("Tổng đơn", value: VND.format(order.total))
                     Picker("Kết quả giao", selection: $outcome) { ForEach(DeliveryOutcome.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("settle.outcome")
                     Picker("Thanh toán", selection: $mode) { ForEach(PaymentMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("settle.mode")
@@ -361,6 +361,13 @@ struct SettlementView: View {
 
 struct OrderReportView: View {
     let id: UUID
+    var didSend: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage(OriginalPhotoPolicy.key) private var photoPolicy = OriginalPhotoPolicy.ask.rawValue
+    @State private var completedReport: DeliveryReport?
+    @State private var shareError: String?
+    @State private var originals: [String: String] = [:]
+    @State private var askCleanup = false
     @EnvironmentObject private var store: DeliveryStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -389,7 +396,7 @@ struct OrderReportView: View {
                     }
                 }
                 ForEach(order.requiredReportRoles.filter { role in !order.activeEvidence.contains { $0.role == role } }, id: \.self) { role in
-                    Section(role.rawValue) { EvidencePicker(title: "Bổ sung ảnh") { url in await store.attach(url, role: role, to: id) } }
+                    Section(role.rawValue) { EvidencePicker(title: "Bổ sung ảnh") { url, asset in await store.attach(url, role: role, to: id, asset: asset) } }
                 }
                 Section("Ảnh gửi · \(selectedIDs.count)") {
                     ForEach(selectedIDs, id: \.self) { fileID in
@@ -408,7 +415,7 @@ struct OrderReportView: View {
                     }
                     Button { choosingImages = true } label: { Label("Chọn ảnh gửi", systemImage: "plus") }.accessibilityIdentifier("report.chooseImages")
                     Button("Chia sẻ vào nhóm") { startShare(includeText: true) }
-                        .buttonStyle(SweepPill(selected: true))
+                        .buttonStyle(SweepPill())
                         .disabled(order.settlement == nil || store.busy).accessibilityIdentifier("report.share")
                     Button("Chỉ gửi ảnh") { startShare(includeText: false) }.disabled(selectedIDs.isEmpty || store.busy)
                 }
@@ -469,7 +476,22 @@ struct OrderReportView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Xong") { choosingImages = false }.accessibilityIdentifier("report.imagesDone") } }
             }
         }
-        .sheet(item: $sharing, onDismiss: { confirm = true }) { DeliveryShareSheet(items: $0.items) }
+        .sheet(item: $sharing, onDismiss: finishShare) { payload in
+            DeliveryShareSheet(items: payload.items, completion: { activity, completed, error in
+                let target = activity?.rawValue.lowercased() ?? ""
+                if let error { shareError = error.localizedDescription }
+                else if completed && (target == "vn.com.vng.zingalo" || target.hasPrefix("vn.com.vng.zingalo.")) {
+                    completedReport = prepared
+                }
+                sharing = nil
+            })
+        }
+        .confirmationDialog("Xoá ảnh gốc đã gửi khỏi thư viện Ảnh?", isPresented: $askCleanup,
+                            titleVisibility: .visible) {
+            Button("Cho phép một lần", role: .destructive) { deleteOriginals() }
+            Button("Luôn cho phép", role: .destructive) { photoPolicy = OriginalPhotoPolicy.always.rawValue; deleteOriginals() }
+            Button("Giữ ảnh", role: .cancel) { leaveReport() }
+        } message: { Text("Bản chứng từ trong Sendeli vẫn được lưu. iOS có thể yêu cầu xác nhận xoá.") }
         .quickLookPreview($preview)
         .alert("Đã gửi nội dung và ảnh đã chọn?", isPresented: $confirm) {
             Button("Đúng, đã gửi") { if let prepared { _ = store.change { try $0.acknowledgeReport(id, reportID: prepared.id) } } }
@@ -479,6 +501,28 @@ struct OrderReportView: View {
     private func saveDraft() {
         guard initialized, !store.busy, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         _ = store.change { try $0.saveReportDraft(id, text: text, evidenceIDs: selectedIDs) }
+    }
+    private func finishShare() {
+        if let error = shareError { shareError = nil; store.message = error; return }
+        guard let report = completedReport else { return }
+        completedReport = nil
+        guard store.change({ try $0.acknowledgeReport(id, reportID: report.id) }), let order = store.order(id) else { return }
+        let selected = Set(report.evidenceIDs)
+        originals = ReportOriginals.candidates(order.activeEvidence.filter { selected.contains($0.id) })
+        guard !originals.isEmpty, photoPolicy != OriginalPhotoPolicy.keep.rawValue else { leaveReport(); return }
+        if photoPolicy == OriginalPhotoPolicy.always.rawValue { deleteOriginals() }
+        else { askCleanup = true }
+    }
+    private func deleteOriginals() {
+        let references = originals
+        Task {
+            do { try await ReportOriginals.delete(references) }
+            catch { store.message = error.localizedDescription }
+            leaveReport()
+        }
+    }
+    private func leaveReport() {
+        if let didSend { didSend() } else { dismiss() }
     }
     private func startShare(includeText: Bool) {
         Task {

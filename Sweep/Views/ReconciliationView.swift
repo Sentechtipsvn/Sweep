@@ -55,7 +55,7 @@ struct ReconciliationView: View {
                     let orders = totals.orders.filter { $0.settlement?.route == route }
                     NavigationLink {
                         List(orders) { order in
-                            NavigationLink { OrderDetailView(id: order.id) } label: { VStack(alignment: .leading) { Text(order.customer); Text(order.workflowStatus).font(.caption).foregroundStyle(.secondary) } }
+                            NavigationLink { OrderDetailView(id: order.id) } label: { VStack(alignment: .leading) { Text(order.displayCustomer); Text(order.workflowStatus).font(.caption).foregroundStyle(.secondary) } }
                         }.navigationTitle(route.rawValue)
                     } label: { LabeledContent(route.rawValue, value: "\(orders.count)") }
                 }

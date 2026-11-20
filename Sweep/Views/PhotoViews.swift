@@ -144,7 +144,7 @@ struct LibraryView: View {
                     Button("Bỏ chọn") { selected = [] }
                     Spacer()
                     Button("Xóa \(selected.count) ảnh", role: .destructive) { confirmDelete = true }
-                        .buttonStyle(.borderedProminent).tint(.red).disabled(library.busy)
+                        .buttonStyle(SweepCompactPill()).tint(.red).disabled(library.busy)
                 }
                 .padding().background(.regularMaterial)
             }

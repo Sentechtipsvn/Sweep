@@ -12,7 +12,7 @@ struct CustomerTransferConfirmationView: View {
             SweepGroupedScroll {
                 if let order = store.order(id) {
                     SweepCard {
-                        Text(order.customer).font(.headline)
+                        Text(order.displayCustomer).font(.subheadline.weight(.semibold))
                         LabeledContent("Mã phiếu", value: order.code)
                         LabeledContent("Còn chờ chuyển", value: VND.format(order.remaining))
                     }
@@ -21,7 +21,7 @@ struct CustomerTransferConfirmationView: View {
                         Button("Khách chuyển khoản rồi") {
                             guard let payment = order.settlement else { return }
                             pending = CustomerTransferConfirmation(settlementID: payment.id, amount: order.remaining)
-                        }.buttonStyle(SweepPill(selected: true))
+                        }.buttonStyle(SweepPill())
                             .disabled(store.busy || store.blocked || order.remaining <= 0 || order.voidReason != nil)
                             .accessibilityIdentifier("work.transfer.confirm")
                         Button("Huỷ", role: .cancel) { dismiss() }.buttonStyle(SweepPill())

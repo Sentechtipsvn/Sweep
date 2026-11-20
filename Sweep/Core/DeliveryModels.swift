@@ -164,6 +164,23 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var reportDrafts: [DeliveryReportDraft] = []
     var reportAcks: [ReportAcknowledgement] = []
     var voidReason: String?
+    var displayCustomer: String {
+        var name = customer.trimmingCharacters(in: .whitespacesAndNewlines)
+        while name.last == ")" {
+            var depth = 0
+            var opening: String.Index?
+            for index in name.indices.reversed() {
+                if name[index] == ")" { depth += 1 }
+                if name[index] == "(" { depth -= 1 }
+                if depth == 0 { opening = index; break }
+            }
+            guard let opening else { break }
+            let prefix = String(name[..<opening]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !prefix.isEmpty else { break }
+            name = prefix
+        }
+        return name
+    }
     var activeEvidence: [DeliveryEvidence] {
         let excluded = Set(exclusions.map(\.evidenceID))
         return evidence.filter { !excluded.contains($0.id) }
@@ -292,6 +309,7 @@ struct HandoverReversal: Codable, Identifiable, Equatable {
     var at = Date()
 }
 struct DeliverySettings: Codable, Equatable {
+    var holidays: WorkHolidayOptions? = nil
     var fee: Int64 = 5_000
     var company = ""
     var account = ""
@@ -306,6 +324,7 @@ struct DeliveryAudit: Codable, Identifiable, Equatable {
     var detail: String
 }
 struct DeliveryLedger: Codable, Equatable {
+    var unfiledPhotos: [ArchivedPhoto]? = nil
     var schema = 3
     var payroll: PayrollBook? = nil
     var contacts: [DeliveryContact]? = nil
@@ -322,7 +341,7 @@ struct DeliveryLedger: Codable, Equatable {
     }
     var cashHeld: Int64 { cashCollected - cashHanded }
     var bankPending: Int64 { orders.reduce(0) { $0 + $1.bank - $1.verifiedBank } }
-    var allEvidence: [DeliveryEvidence] { orders.flatMap(\.evidence) + (settings.qr.map { [$0] } ?? []) }
+    var allEvidence: [DeliveryEvidence] { orders.flatMap(\.evidence) + (settings.qr.map { [$0] } ?? []) + (unfiledPhotos ?? []).map(\.evidence) }
     mutating func record(_ action: String, orderID: UUID? = nil, _ detail: String) {
         audit.append(DeliveryAudit(orderID: orderID, action: action, detail: detail))
     }

@@ -58,11 +58,11 @@ struct OrdersView: View {
                     if orders.isEmpty {
                         VStack(spacing: 16) {
                             Text(query.isEmpty ? "Chưa có đơn trong danh sách này" : "Không tìm thấy đơn").foregroundStyle(.secondary)
-                            if filter == "Đang giao" { Button("Chọn ảnh đơn hàng") { newOrder = true }.buttonStyle(SweepPill(selected: true)) }
+                            if filter == "Đang giao" { Button("Chọn ảnh đơn hàng") { newOrder = true }.buttonStyle(SweepPill()) }
                         }.frame(maxWidth: .infinity).padding(.vertical, 20)
                     }
                     ForEach(orders) { order in
-                        NavigationLink(value: order.id) { SendeliOrderRow(order: order) }.accessibilityIdentifier("order.\(order.code)")
+                        NavigationLink(value: order.id) { SendeliOrderRow(order: order) }.buttonStyle(.plain).accessibilityIdentifier("order.\(order.code)")
                     }
                 }
                 .safeAreaInset(edge: .bottom) {
@@ -134,6 +134,7 @@ struct OrderIntakeView: View {
     @State private var salesperson = ""
     @State private var signedAt = Date()
     @State private var allowRepeatedImage = false
+    @State private var sourceAsset: String?
     @State private var image: ImportedImage?
     @State private var preview: URL?
     private var source: URL? { image?.url ?? shared?.image ?? candidate?.image }
@@ -142,8 +143,8 @@ struct OrderIntakeView: View {
             Form {
                 Section("Phiếu nội bộ có tiền") {
                     if let source { Button { preview = source } label: { EvidenceThumbnail(url: source, height: 220) }.buttonStyle(.plain) }
-                    EvidencePicker(title: "Ảnh phiếu") { url in
-                        do { image = try await Task.detached { try ImportedImage.copy(from: url) }.value }
+                    EvidencePicker(title: "Ảnh phiếu") { url, asset in
+                        do { image = try await Task.detached { try ImportedImage.copy(from: url) }.value; sourceAsset = asset }
                         catch { store.message = error.localizedDescription }
                     }
                     if reading { ProgressView("Đang đọc thông tin trên phiếu…") }
@@ -214,7 +215,7 @@ struct OrderIntakeView: View {
                         Button("Xác nhận ký nhận phiếu") { askSigned = true }.buttonStyle(SweepCompactPill())
                     }
                     Button(signed ? "Nhập đơn và ghi công ký nhận" : "Nhập đơn vào Sendeli") { Task { await save() } }
-                        .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).controlSize(.large)
+                        .buttonStyle(SweepCompactPill()).frame(maxWidth: .infinity).controlSize(.large)
                         .accessibilityIdentifier("intake.save").disabled(store.busy || reading || !signed || source == nil)
                 }.padding().frame(maxWidth: .infinity).background(.bar)
             }
@@ -272,7 +273,7 @@ struct OrderIntakeView: View {
                     order.settlements = [Settlement(outcome: candidate.deliveredAt == nil ? .pending : .delivered, mode: mode, cash: candidate.cash, bank: candidate.bank, note: candidate.note, at: candidate.deliveredAt ?? candidate.createdAt ?? Date())]
                 }
             }
-            if let id = await store.create(order, image: source, signedAt: signed ? signedAt : nil, allowRepeatedImage: allowRepeatedImage) { saved(id) }
+            if let id = await store.create(order, image: source, signedAt: signed ? signedAt : nil, allowRepeatedImage: allowRepeatedImage, asset: sourceAsset) { saved(id) }
         } catch { validation = error.localizedDescription }
     }
 }

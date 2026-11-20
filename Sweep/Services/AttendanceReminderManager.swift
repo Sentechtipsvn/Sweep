@@ -54,7 +54,7 @@ final class AttendanceReminderManager: ObservableObject {
                 try await center.add(UNNotificationRequest(identifier: "sendeli.attendance.\(Int(date.timeIntervalSince1970))", content: content,
                     trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)))
             }
-            if token == generation { status = "Nhắc lúc 17:30, thứ Hai–thứ Bảy nếu chưa chấm. Lịch 30 ngày được cập nhật khi mở app hoặc sửa công." }
+            if token == generation { status = "Nhắc lúc 08:00 giờ Việt Nam, thứ Hai–thứ Bảy nếu chưa chấm, trừ ngày nghỉ lễ. Lịch 30 ngày được cập nhật khi mở app hoặc sửa công." }
         } catch { if token == generation { status = "Chưa đặt đủ nhắc chấm công: " + error.localizedDescription } }
     }
 }
