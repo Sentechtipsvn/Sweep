@@ -22,13 +22,24 @@ final class FieldUpdateTests: XCTestCase {
         XCTAssertFalse(ReportShareResult.sentToZalo(activity: zalo, completed: false, failed: false))
         XCTAssertFalse(ReportShareResult.sentToZalo(activity: zalo, completed: true, failed: true))
     }
-    func testPinnedCoordinatesPreferThePlaceOverTheCamera() {
-        XCTAssertEqual(MapPin.read("10.75, 106.66"), MapPin(latitude: 10.75, longitude: 106.66))
-        XCTAssertEqual(MapPin.read("https://www.google.com/maps/place/shop/@12,105,15z/data=!3d10.75!4d106.66"), MapPin.read("10.75,106.66"))
-        XCTAssertNil(MapPin.read("https://www.google.com/maps/@12,105,15z"))
-        XCTAssertNil(MapPin.read("https://maps.google.com/?ll=12,105"))
-        XCTAssertNil(MapPin.read("92,0"))
-        XCTAssertNil(MapPin.read("https://example.org/?q=10,105"))
+    func testSavedMapLinksRoundTripAndOldCoordinatesRemainUsable() throws {
+        let original = DeliveryPlace(customer: "Tiệm", phone: "", address: "Đường A", kind: "Khách hàng", latitude: 10.75, longitude: 106.66)
+        let old = try JSONDecoder().decode(DeliveryPlace.self, from: JSONEncoder().encode(original))
+        XCTAssertNil(old.mapLink)
+        XCTAssertEqual(old.destination, "10.75,106.66")
+        XCTAssertNotNil(PlaceMapLink.url(old.editableMapLink))
+        for text in ["https://maps.app.goo.gl/abc123", "https://www.google.com/maps/place/shop/@12,105,15z/data=!3d10.75!4d106.66", "https://maps.apple.com/?ll=10,106&q=Shop"] {
+            var ledger = DeliveryLedger()
+            let place = DeliveryPlace(customer: "Tiệm", phone: "", address: "Đường A", kind: "Khách hàng", mapLink: text)
+            try ledger.savePlace(place)
+            let backup = try ledger.selectedBackup([.places])
+            let restored = try DeliveryLedger().restoring(backup, parts: [.places])
+            XCTAssertEqual(restored.places?.first?.destination, text)
+            XCTAssertEqual(restored.places?.first?.editableMapLink, text)
+        }
+        for text in ["", "javascript:alert(1)", "https://example.org", "https://www.google.com/url?q=test", "https://maps.app.goo.gl.evil.example/test", "https://goo.gl/maps/"] {
+            XCTAssertNil(PlaceMapLink.url(text))
+        }
     }
     func testWorkHolidaysUseVietnameseLunarDatesAndCompanySunday() throws {
         let c = DeliveryMonth.calendar

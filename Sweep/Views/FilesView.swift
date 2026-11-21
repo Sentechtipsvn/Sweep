@@ -43,7 +43,7 @@ struct FilesView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
-        .navigationTitle("File lớn")
+        .sendeliNavigationTitle("File lớn")
         .fileImporter(isPresented: $chooseFolder, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let url): scanner.scan(url)

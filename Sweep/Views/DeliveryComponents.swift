@@ -184,7 +184,7 @@ struct MoneyInput: View {
 
 struct CloseSheet: ToolbarContent {
     let action: () -> Void
-    var body: some ToolbarContent { ToolbarItem(placement: .cancellationAction) { Button("Đóng", action: action) } }
+    var body: some ToolbarContent { ToolbarItem(placement: .topBarTrailing) { Button("Đóng", action: action) } }
 }
 
 struct BankCompanyView: View {
@@ -199,6 +199,34 @@ struct BankCompanyView: View {
                     Button { preview = store.url(qr) } label: { EvidenceThumbnail(url: store.url(qr), height: 320) }.buttonStyle(.plain)
                 }
             }
-        }.navigationTitle("QR công ty").quickLookPreview($preview)
+        }.sendeliNavigationTitle("QR công ty").quickLookPreview($preview)
     }
+}
+
+extension View {
+    func sendeliNavigationTitle(_ title: String) -> some View {
+        navigationTitle(title).background(BackTitleInstaller().frame(width: 0, height: 0))
+    }
+}
+
+private struct BackTitleInstaller: UIViewControllerRepresentable {
+    final class Controller: UIViewController {
+        func install() {
+            guard let stack = navigationController else { return }
+            for page in stack.viewControllers {
+                page.navigationItem.backButtonDisplayMode = .default
+                page.navigationItem.backButtonTitle = "Trở về"
+            }
+        }
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            install()
+        }
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            install()
+        }
+    }
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) { controller.install() }
 }

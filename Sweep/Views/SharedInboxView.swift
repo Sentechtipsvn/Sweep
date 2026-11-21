@@ -10,13 +10,13 @@ final class SharedInboxStore: ObservableObject {
     func reload() async {
         guard !loading else { return }; loading = true; defer { loading = false }
         do {
-            let scan = try await Task.detached(priority: .utility) { try SharedInvoiceInbox.live().scan() }.value
+            let scan = try await Task.detached(priority: .utility) { try SharedInvoiceInbox.appScan() }.value
             items = scan.items; warnings = scan.warnings; problem = ""
         } catch { problem = error.localizedDescription }
     }
     func remove(_ item: SharedInvoiceInbox.Item) async -> Bool {
         do {
-            try await Task.detached(priority: .utility) { try SharedInvoiceInbox.live().remove(item) }.value
+            try await Task.detached(priority: .utility) { try SharedInvoiceInbox.removeFromApp(item) }.value
             await reload(); return true
         } catch { problem = error.localizedDescription; return false }
     }
@@ -52,7 +52,7 @@ struct SharedInboxView: View {
                 }
                 if !inbox.warnings.isEmpty { Section("Cần kiểm tra") { ForEach(Array(inbox.warnings.enumerated()), id: \.offset) { _, warning in Text(warning).font(.caption).foregroundStyle(.orange) } } }
             }
-            .navigationTitle("Ảnh được chia sẻ").navigationBarTitleDisplayMode(.inline)
+            .sendeliNavigationTitle("Ảnh được chia sẻ").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .refreshable { await inbox.reload() }
             .sheet(item: $selected, onDismiss: { if let id = imported { imported = nil; saved(id) } }) { item in

@@ -29,7 +29,7 @@ struct CustomerTransferConfirmationView: View {
                     }
                 }
             }
-            .navigationTitle("Xác nhận chuyển khoản").navigationBarTitleDisplayMode(.inline)
+            .sendeliNavigationTitle("Xác nhận chuyển khoản").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .alert("Khách đã chuyển đủ phần còn lại?", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }), presenting: pending) { value in
                 Button("Xác nhận và hoàn tất") {

@@ -1,7 +1,7 @@
-name: Sendeli 0.9.0 field update
+name: Sendeli 0.9.1 field update
 on:
   push:
-    branches: ['feature/sendeli-0.9.0']
+    branches: ['test/sendeli-0.9.1-build18']
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,11 +29,11 @@ jobs:
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-device \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee device-build.log
           python3 Tools/package_ipa.py --app build-device/Build/Products/Release-iphoneos/Sweep.app \
-            --output dist/Sendeli-0.9.0-build17.ipa
+            --output dist/Sendeli-0.9.1-build18.ipa
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Sendeli-0.9.0-build17
+          name: Sendeli-0.9.1-build18
           path: dist/
           retention-days: 30
       - name: Boot iPhone 11 simulator
@@ -60,7 +60,8 @@ jobs:
             -only-testing:SweepUITests/SweepUITests/testSendeliWorkCardAndCompactDirectories \
             -only-testing:SweepUITests/SweepUITests/testHotfixUnsignedBankOpensAfterSigningAndQRDoesNotRecordPayment \
             -only-testing:SweepUITests/SweepUITests/testHotfixPartialCashThenTransferNowPersistsOnlyConfirmedCash \
-            -only-testing:SweepUITests/SweepUITests/testSavedPinUsesChosenCoordinateAndBackupAllowsPlacesAlone \
+            -only-testing:SweepUITests/SweepUITests/testShortcutAcceptsInvoiceFileAndImageData \
+            -only-testing:SweepUITests/SweepUITests/testPlaceEditorAcceptsMapLinkAndBackupAllowsPlacesAlone \
             -only-testing:SweepUITests/SweepUITests/testReportImageSelectionAndCompactTransferCaption \
             -only-testing:SweepUITests/SweepUITests/testHotfixFreightConfirmationAndHorizontalImageButtons \
             test | tee device-ui.log
@@ -73,7 +74,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Sendeli-build17-validation
+          name: Sendeli-build18-validation
           path: |
             device-build.log
             device-ui.log

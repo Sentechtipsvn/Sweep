@@ -8,23 +8,34 @@ final class SweepUITests: XCTestCase {
             return false
         }
     }
-    func testSavedPinUsesChosenCoordinateAndBackupAllowsPlacesAlone() throws {
+    func testPlaceEditorAcceptsMapLinkAndBackupAllowsPlacesAlone() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "-sendeli.map.layer", "Apple Maps"]
+        app.launchArguments = ["-AppleLanguages", "(vi)", "-AppleLocale", "vi_VN", "--delivery-ui-testing", "--reset-delivery", "--update02-ui-testing"]
         app.launch()
         app.tabBars.buttons["Công cụ"].tap(); app.buttons["Vị trí"].tap()
-        app.buttons["Thêm vị trí"].tap(); app.buttons["Chọn trên bản đồ"].tap()
-        let save = app.buttons["pin.save"]
-        XCTAssertTrue(save.waitForExistence(timeout: 10)); XCTAssertFalse(save.isEnabled)
-        let field = app.textFields["pin.query"]; field.tap(); field.typeText("10.75,106.66")
-        app.buttons["pin.search"].tap()
-        waitUntil(save, in: app) { $0.exists && $0.isEnabled }; save.tap()
-        XCTAssertTrue(app.textFields["Vĩ độ"].waitForExistence(timeout: 8))
-        let latitude = try XCTUnwrap(Double(app.textFields["Vĩ độ"].value as? String ?? ""))
-        let longitude = try XCTUnwrap(Double(app.textFields["Kinh độ"].value as? String ?? ""))
-        XCTAssertEqual(latitude, 10.75, accuracy: 0.00001)
-        XCTAssertEqual(longitude, 106.66, accuracy: 0.00001)
+        app.buttons["Thêm vị trí"].tap()
+        let close = app.navigationBars.buttons["Đóng"]
+        let back = app.navigationBars.buttons["Trở về"]
+        XCTAssertTrue(close.waitForExistence(timeout: 8))
+        XCTAssertTrue(back.waitForExistence(timeout: 8))
+        XCTAssertLessThan(back.frame.midX, app.frame.midX)
+        XCTAssertGreaterThan(close.frame.midX, app.frame.midX)
+        XCTAssertFalse(app.buttons["Chọn trên bản đồ"].exists)
+        XCTAssertFalse(app.textFields["Vĩ độ"].exists)
+        XCTAssertFalse(app.textFields["Kinh độ"].exists)
+        XCTAssertTrue(app.buttons["Lấy vị trí hiện tại"].exists)
+        close.tap()
+        let edit = app.buttons["Sửa Điểm giao thử"]
+        edit.tap()
+        let link = "https://maps.app.goo.gl/test123"
+        let field = app.textFields["place.link"]
+        field.tap(); field.typeText(link + "\n")
+        app.buttons["Lưu vị trí"].tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 8))
+        edit.tap()
+        XCTAssertEqual(field.value as? String, link)
+        app.navigationBars.buttons["Đóng"].tap()
         app.tabBars.buttons["Cài đặt"].tap()
         app.buttons["Sao lưu và khôi phục sổ / ảnh"].tap()
         app.buttons["Bỏ chọn tất cả"].tap()
@@ -62,8 +73,8 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(app.buttons["contact.call"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["contact.zalo"].firstMatch.exists)
         attach(app, name: "sendeli-compact-contacts")
-        app.navigationBars.buttons["Công cụ"].tap(); app.buttons["Vị trí"].tap()
-        XCTAssertTrue(app.buttons["Điều hướng Google Maps"].firstMatch.waitForExistence(timeout: 10))
+        app.navigationBars.buttons["Trở về"].tap(); app.buttons["Vị trí"].tap()
+        XCTAssertTrue(app.buttons["Mở chỉ đường"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["contact.call"].firstMatch.exists)
         attach(app, name: "sendeli-compact-places")
     }
@@ -104,7 +115,7 @@ final class SweepUITests: XCTestCase {
         tapPillBackground(app.buttons["work.transfer.confirm"])
         app.alerts.buttons["Xác nhận và hoàn tất"].tap()
         XCTAssertTrue(app.navigationBars["Việc cần chốt"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons["Đơn hàng"].tap()
+        app.navigationBars.buttons["Trở về"].tap()
         XCTAssertFalse(app.buttons["orders.work"].exists)
         attach(app, name: "update03-no-work-after-confirmation")
         app.terminate()
@@ -190,7 +201,7 @@ final class SweepUITests: XCTestCase {
             reveal(tool, in: app); XCTAssertTrue(tool.isHittable); tool.tap()
             let content = app.scrollViews["payroll.content"]
             XCTAssertTrue(content.waitForExistence(timeout: 10)); XCTAssertEqual(content.collectionViews.count, 0)
-            app.navigationBars.buttons["Công cụ"].tap()
+            app.navigationBars.buttons["Trở về"].tap()
         }
         let tool = app.buttons["tool.payroll"]; reveal(tool, in: app); tool.tap()
         XCTAssertTrue(app.scrollViews["payroll.content"].waitForExistence(timeout: 10))
@@ -261,7 +272,7 @@ final class SweepUITests: XCTestCase {
             XCTAssertEqual(content.collectionViews.count, 0)
             if iteration == 1 { XCUIDevice.shared.orientation = .landscapeLeft }
             if iteration == 2 { XCUIDevice.shared.orientation = .portrait }
-            app.navigationBars.buttons["Công cụ"].tap()
+            app.navigationBars.buttons["Trở về"].tap()
         }
         app.buttons["tool.payroll"].tap()
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
@@ -383,7 +394,7 @@ final class SweepUITests: XCTestCase {
         attach(app, name: "update02-compact-contacts")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.buttons["Vị trí"].tap()
-        XCTAssertTrue(app.buttons["Google Maps"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Mở chỉ đường"].waitForExistence(timeout: 10))
         XCTAssertLessThanOrEqual(app.buttons["contact.call"].firstMatch.frame.width, 60)
         attach(app, name: "update02-compact-places")
     }
@@ -507,6 +518,18 @@ final class SweepUITests: XCTestCase {
         XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 45))
         waitUntil(app.buttons["qr.generate"], in: app) { $0.exists && $0.isEnabled }
         attach(app, name: "qr-recorded-transfer-can-show-again")
+    }
+
+    func testShortcutAcceptsInvoiceFileAndImageData() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for source in ["--shortcut-file", "--shortcut-bytes"] {
+            app.launchArguments = ["--delivery-ui-testing", "--reset-delivery", "--shared-ui-testing", source]
+            app.launch()
+            if app.alerts.buttons["Đã ký"].waitForExistence(timeout: 8) { app.alerts.buttons["Đã ký"].tap() }
+            XCTAssertTrue(app.textFields["intake.code"].waitForExistence(timeout: 20), source)
+            app.terminate()
+        }
     }
 
     func testSharedImageReviewImportQRSetupAndRelaunch() throws {

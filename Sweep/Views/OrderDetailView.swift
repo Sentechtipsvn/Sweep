@@ -52,7 +52,7 @@ struct OrderDetailView: View {
                             SweepOrderStatus(order: order).font(.subheadline)
                             if !order.address.isEmpty {
                                 Text(order.address).textSelection(.enabled)
-                                Button { openDirections(order.address) } label: { Label("Google Maps", systemImage: "location") }.buttonStyle(SweepPill()).accessibilityIdentifier("order.directions")
+                                Button { openDirections(order.address) } label: { Label("Chỉ đường", systemImage: "location") }.buttonStyle(SweepPill()).accessibilityIdentifier("order.directions")
                             }
                             if let u = phoneURL(order.phone) { Link(destination: u) { Label(order.phone, systemImage: "phone.fill").frame(maxWidth: .infinity, minHeight: 44) }.buttonStyle(SweepPill()) }
                             NavigationLink { OrderQRView(id: id) } label: { Label("QR chuyển khoản", systemImage: "qrcode") }.accessibilityIdentifier("order.qr")
@@ -138,7 +138,7 @@ struct OrderDetailView: View {
                                                 Text(order.exclusions.first(where: { $0.evidenceID == file.id })?.reason ?? "").font(.caption)
                                             }
                                         }.buttonStyle(.plain)
-                                    }.navigationTitle("Ảnh lưu trong lịch sử").quickLookPreview($preview)
+                                    }.sendeliNavigationTitle("Ảnh lưu trong lịch sử").quickLookPreview($preview)
                                 }
                             }
                             NavigationLink("Lịch sử hồ sơ") { OrderHistoryView(id: id) }
@@ -169,7 +169,7 @@ struct OrderDetailView: View {
                 } message: { Text("Giữ ảnh gốc và lịch sử. Bộ báo cáo mới sẽ bỏ ảnh này; Sếp thêm ảnh đúng nếu đó là chứng từ bắt buộc.") }
             } else { ContentUnavailableView("Không tìm thấy hồ sơ", systemImage: "doc.questionmark") }
         }
-        .navigationTitle("Chi tiết đơn").navigationBarTitleDisplayMode(.inline)
+        .sendeliNavigationTitle("Chi tiết đơn").navigationBarTitleDisplayMode(.inline)
         .sheet(item: $method, onDismiss: promptForLocation) { DeliveryFlowView(id: id, method: $0) }
         .sheet(isPresented: $sign, onDismiss: resumeDeliveryAfterSigning) { SignAssignmentView(id: id) }
         .toolbar { if order?.voidReason == nil { Button("Sửa") { edit = true } } }
@@ -212,10 +212,7 @@ struct OrderDetailView: View {
                 return $0.key == DeliveryPlace.key(customer: o.customer, address: o.address, kind: "Khách hàng", phone: o.phone)
             }
         }
-        let destination = saved?.destination ?? address
-        guard let native = DeliveryDirections.googleMaps(address: destination), let web = DeliveryDirections.googleMaps(address: destination, native: false) else { return }
-        if UIApplication.shared.canOpenURL(native) { UIApplication.shared.open(native) }
-        else { UIApplication.shared.open(web) }
+        openPlaceDirections(saved?.destination ?? address)
     }
 }
 
@@ -238,7 +235,7 @@ private struct SignAssignmentView: View {
                     .accessibilityValue(confirmed ? "Đã xác nhận" : "Chưa xác nhận")
                 Text("Ghi công \(VND.format(store.ledger.settings.fee)) đúng một lần. Giao thất bại, chưa thu hoặc CK sau vẫn giữ công. Nhập đơn cũ: chọn đúng ngày ký, không dùng ngày nhập ảnh.").font(.footnote).foregroundStyle(.secondary)
                 Button("Ghi công ký nhận") { if store.change({ try $0.sign(id, at: date) }) { dismiss() } }.disabled(!confirmed).accessibilityIdentifier("sign.save")
-            }.navigationTitle("Xác nhận ký nhận").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
+            }.sendeliNavigationTitle("Xác nhận ký nhận").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
         }
     }
 }
@@ -278,7 +275,7 @@ private struct EditOrderView: View {
                         ledger.record("Sửa hồ sơ", orderID: order.id, "Trước: \(before)\nSau: \(after)")
                     }) { dismiss() }
                 }
-            }.navigationTitle("Sửa hồ sơ").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
+            }.sendeliNavigationTitle("Sửa hồ sơ").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
         }
     }
 }
@@ -339,7 +336,7 @@ struct SettlementView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Chốt giao / thu tiền").navigationBarTitleDisplayMode(.inline)
+            .sendeliNavigationTitle("Chốt giao / thu tiền").navigationBarTitleDisplayMode(.inline)
             .alert("Lưu điều chỉnh giao / tiền?", isPresented: $confirm) {
                 Button("Xác nhận lưu") { if let pending, store.change({ try $0.settle(order.id, value: pending) }) { dismiss() } }
                 Button("Kiểm tra lại", role: .cancel) {}
@@ -430,7 +427,7 @@ struct OrderReportView: View {
                 }
             }
         }
-        .navigationTitle("Chia sẻ đơn").navigationBarTitleDisplayMode(.inline)
+        .sendeliNavigationTitle("Chia sẻ đơn").navigationBarTitleDisplayMode(.inline)
         .disabled(store.busy)
         .onAppear {
             guard !initialized, let order = store.order(id) else { return }; initialized = true
@@ -473,7 +470,7 @@ struct OrderReportView: View {
                             }.buttonStyle(.plain).accessibilityIdentifier("report.select.\(file.role.rawValue)")
                         }
                     }
-                }.navigationTitle("Chọn ảnh gửi").navigationBarTitleDisplayMode(.inline)
+                }.sendeliNavigationTitle("Chọn ảnh gửi").navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Xong") { choosingImages = false }.accessibilityIdentifier("report.imagesDone") } }
             }
         }
@@ -553,6 +550,6 @@ struct OrderHistoryView: View {
                 Text(item.at.formatted(date: .numeric, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                 Text(item.detail).font(.caption).textSelection(.enabled)
             }
-        }.navigationTitle("Lịch sử hồ sơ")
+        }.sendeliNavigationTitle("Lịch sử hồ sơ")
     }
 }

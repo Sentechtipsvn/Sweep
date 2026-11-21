@@ -33,17 +33,30 @@ struct ReceiveSweepInvoice: AppIntent {
     static var openAppWhenRun = true
     @Parameter(title: "Ảnh phiếu") var image: IntentFile
     func perform() async throws -> some IntentResult {
-        let bytes = image.data
-        guard !bytes.isEmpty, bytes.count <= 80 * 1024 * 1024 else { throw DeliveryError.invalid("Chọn một ảnh phiếu tối đa 80 MB.") }
-        _ = try await Task.detached(priority: .userInitiated) {
-            let url = try IncomingInvoiceImage.copy(data: bytes)
-            defer { try? FileManager.default.removeItem(at: url) }
-            return try SharedInvoiceInbox.live().add(url)
-        }.value
+        do {
+            let input = image
+            try await Task.detached(priority: .userInitiated) {
+                let normalized: URL
+                if let source = input.fileURL, let copy = try? IncomingInvoiceImage.copy(from: source) {
+                    normalized = copy
+                } else {
+                    normalized = try IncomingInvoiceImage.copy(data: input.data)
+                }
+                defer { try? FileManager.default.removeItem(at: normalized) }
+                _ = try SharedInvoiceInbox.shortcut().add(normalized)
+            }.value
+        } catch {
+            throw ShortcutImportFailure(message: error.localizedDescription)
+        }
         await MainActor.run { NotificationCenter.default.post(name: .sweepInboxReceived, object: nil) }
         return .result()
     }
 }
+private struct ShortcutImportFailure: Error, CustomLocalizedStringResourceConvertible {
+    let message: String
+    var localizedStringResource: LocalizedStringResource { "Không nhận được ảnh phiếu. \(message)" }
+}
+
 struct SweepShortcutGuide: View {
     var body: some View {
         List {
@@ -55,6 +68,6 @@ struct SweepShortcutGuide: View {
             Section {
                 Text("Cần thử trên iPhone với phiên bản Zalo đang dùng. Đây là đường Phím tắt; biểu tượng Sendeli trong bảng chia sẻ vẫn là tiện ích nhận ảnh, không tự bật app chính.").font(.footnote).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Nhận ảnh bằng Phím tắt").navigationBarTitleDisplayMode(.inline)
+        }.sendeliNavigationTitle("Nhận ảnh bằng Phím tắt").navigationBarTitleDisplayMode(.inline)
     }
 }

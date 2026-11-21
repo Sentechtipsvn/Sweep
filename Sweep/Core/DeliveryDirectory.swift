@@ -21,7 +21,14 @@ struct DeliveryPlace: Codable, Identifiable, Equatable {
     var kind: String
     var latitude: Double?
     var longitude: Double?
+    var mapLink: String?
+    var editableMapLink: String {
+        if let mapLink { return mapLink }
+        if let latitude, let longitude { return PlaceMapLink.gpsLink(latitude: latitude, longitude: longitude) }
+        return ""
+    }
     var destination: String {
+        if let mapLink, PlaceMapLink.url(mapLink) != nil { return mapLink }
         if let lat = latitude, let lon = longitude { return "\(lat),\(lon)" }
         return address
     }
@@ -45,6 +52,7 @@ extension DeliveryLedger {
     }
     mutating func savePlace(_ value: DeliveryPlace) throws {
         guard !value.customer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !value.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nhập tên và địa chỉ.") }
+        if let link = value.mapLink, PlaceMapLink.url(link) == nil { throw DeliveryError.invalid("Dán liên kết vị trí Google Maps hoặc Apple Maps.") }
         if let lat = value.latitude { guard lat.isFinite && (-90...90).contains(lat) else { throw DeliveryError.invalid("Vĩ độ không hợp lệ.") } }
         if let lon = value.longitude { guard lon.isFinite && (-180...180).contains(lon) else { throw DeliveryError.invalid("Kinh độ không hợp lệ.") } }
         guard (value.latitude == nil) == (value.longitude == nil) else { throw DeliveryError.invalid("Nhập đủ tọa độ.") }

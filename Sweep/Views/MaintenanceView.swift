@@ -24,7 +24,7 @@ struct MaintenanceView: View {
                 if store.busy { ProgressView("Đang sao lưu và kiểm tra…") }
                 if !result.isEmpty { Text(result).foregroundStyle(.secondary) }
             }
-        }.navigationTitle("Dọn dẹp").disabled(store.busy)
+        }.sendeliNavigationTitle("Dọn dẹp").disabled(store.busy)
             .fileImporter(isPresented: $folder, allowedContentTypes: [.folder]) { selection in
                 do { backupFolder = try selection.get(); confirmation = ""; confirm = true }
                 catch { if (error as NSError).code != NSUserCancelledError { store.message = error.localizedDescription } }

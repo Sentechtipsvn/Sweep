@@ -25,7 +25,7 @@ struct HomeView: View {
                     }
                 }.accessibilityIdentifier("tool.payroll")
             }.buttonStyle(.plain).padding(20)
-        }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle("Công cụ")
+        }.background(Color(uiColor: .systemGroupedBackground)).sendeliNavigationTitle("Công cụ")
     }
 }
 private struct ToolIcon: View {
@@ -98,7 +98,7 @@ struct SettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
-        .navigationTitle("Cài đặt")
+        .sendeliNavigationTitle("Cài đặt")
         .onChange(of: photoLimit) { _, _ in if library.canRead { library.reload() } }
     }
 }
@@ -128,6 +128,6 @@ private struct WorkHolidaySettings: View {
                 }
                 Toggle("Nghỉ bù khi lễ trùng Chủ nhật", isOn: binding(\.compensateSunday))
             }
-        }.navigationTitle("Lịch nghỉ lễ")
+        }.sendeliNavigationTitle("Lịch nghỉ lễ")
     }
 }

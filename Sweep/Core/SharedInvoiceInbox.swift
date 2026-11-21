@@ -43,6 +43,37 @@ struct SharedInvoiceInbox {
         throw DeliveryError.invalid("Tiện ích đã mở nhưng chưa truy cập được hộp thư chung. \(details) Dùng bản IPA dành cho AltStore, giữ tiện ích mở rộng khi cài. Nếu vẫn lỗi, gửi lại thông báo này để kiểm tra quyền nhóm; ảnh chưa được nhận vào Sweep.")
     }
 
+    static func shortcut() throws -> SharedInvoiceInbox {
+        let fm = FileManager.default
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--delivery-ui-testing") {
+            return SharedInvoiceInbox(directory: fm.temporaryDirectory.appendingPathComponent("Sweep-Delivery-UITests/ShortcutInbox", isDirectory: true))
+        }
+        #endif
+        let support = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        return SharedInvoiceInbox(directory: support.appendingPathComponent("ShortcutInbox", isDirectory: true))
+    }
+
+    static func appScan() throws -> Scan {
+        var result = try shortcut().scan()
+        if let shared = try? live() {
+            let scan = try shared.scan()
+            result.items += scan.items
+            result.warnings += scan.warnings
+            result.items.sort { $0.receivedAt < $1.receivedAt }
+        }
+        return result
+    }
+
+    static func removeFromApp(_ item: Item) throws {
+        let local = try shortcut()
+        if item.directory.deletingLastPathComponent().standardizedFileURL == local.directory.standardizedFileURL {
+            try local.remove(item)
+        } else {
+            try live().remove(item)
+        }
+    }
+
     @discardableResult func add(_ source: URL, signedAt: Date? = nil) throws -> Item {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -95,7 +95,7 @@ struct DeliveryFlowView: View {
                     }
                 }
             }
-            .navigationTitle(stage == .proof ? "Chứng từ giao hàng" : method.rawValue).navigationBarTitleDisplayMode(.inline)
+            .sendeliNavigationTitle(stage == .proof ? "Chứng từ giao hàng" : method.rawValue).navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 CloseSheet { dismiss() }

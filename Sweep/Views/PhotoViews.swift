@@ -53,8 +53,8 @@ private struct PhotoPreview: View {
                 }
             }
             .padding(.bottom)
-            .navigationTitle("Xem ảnh").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Xong") { dismiss() } } }
+            .sendeliNavigationTitle("Xem ảnh").navigationBarTitleDisplayMode(.inline)
+            .toolbar { CloseSheet { dismiss() } }
         }
     }
 }
@@ -129,7 +129,7 @@ struct LibraryView: View {
                 }
             }
         }
-        .navigationTitle(mode == .duplicates ? "Ảnh trùng" : "Ảnh màn hình")
+        .sendeliNavigationTitle(mode == .duplicates ? "Ảnh trùng" : "Ảnh màn hình")
         .toolbar {
             if library.canRead {
                 ToolbarItem(placement: .topBarTrailing) {

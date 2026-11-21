@@ -48,7 +48,7 @@ struct DeliverySettingsView: View {
                 NavigationLink("Xem màn hình đưa khách") { BankCompanyView() }
             }
         }
-        .navigationTitle("Cấu hình giao hàng").navigationBarTitleDisplayMode(.inline)
+        .sendeliNavigationTitle("Cấu hình giao hàng").navigationBarTitleDisplayMode(.inline)
         .onAppear {
             fee = String(store.ledger.settings.fee); company = store.ledger.settings.company; account = store.ledger.settings.account
             bankID = store.ledger.settings.vietQR?.bankID ?? ""; accountNumber = store.ledger.settings.vietQR?.accountNumber ?? ""; accountName = store.ledger.settings.vietQR?.accountName ?? ""
@@ -107,7 +107,7 @@ struct DeliveryBackupView: View {
                 }
             }
         }
-        .navigationTitle("Sao lưu và khôi phục").navigationBarTitleDisplayMode(.inline)
+        .sendeliNavigationTitle("Sao lưu và khôi phục").navigationBarTitleDisplayMode(.inline)
         .quickLookPreview($preview)
         .disabled(store.busy || loading)
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }

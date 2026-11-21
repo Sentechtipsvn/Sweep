@@ -69,7 +69,7 @@ struct OrdersView: View {
                     if filter == "Đã giao" { Text("\(orders.count) đơn").font(.system(size: 16)).frame(maxWidth: .infinity).padding(.vertical, 7).background(.bar).accessibilityIdentifier("orders.count") }
                 }
             }
-            .navigationTitle("Đơn hàng")
+            .sendeliNavigationTitle("Đơn hàng")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) } }
             .navigationDestination(for: UUID.self) { OrderDetailView(id: $0) }
             .navigationDestination(isPresented: $showWork) { DeliveryWorkView() }
@@ -186,7 +186,7 @@ struct OrderIntakeView: View {
                     }
                 }
             }
-            .navigationTitle("Nhận đơn").navigationBarTitleDisplayMode(.inline)
+            .sendeliNavigationTitle("Nhận đơn").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .quickLookPreview($preview)
             .onAppear {
@@ -335,7 +335,7 @@ struct BillInboxView: View {
                     }
                     #endif
                 }
-                .navigationTitle("Nhập từ Bill").navigationBarTitleDisplayMode(.inline)
+                .sendeliNavigationTitle("Nhập từ Bill").navigationBarTitleDisplayMode(.inline)
                 .toolbar { CloseSheet { dismiss() } }
                 .fileImporter(isPresented: $folderPicker, allowedContentTypes: [.folder]) { selection in
                     Task {

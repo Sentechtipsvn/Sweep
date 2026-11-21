@@ -54,7 +54,7 @@ struct OrderQRView: View {
                 }
             }
         }
-        .navigationTitle("QR chuyển khoản").navigationBarTitleDisplayMode(.inline)
+        .sendeliNavigationTitle("QR chuyển khoản").navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {

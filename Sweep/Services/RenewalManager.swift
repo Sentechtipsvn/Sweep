@@ -125,7 +125,7 @@ struct RenewalView: View {
                 Button("Mở cài đặt thông báo") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
                 Text("Sau khi refresh/ký lại, mở Sendeli để nhận hạn mới và hủy nhắc cũ. Thông báo phụ thuộc quyền iOS/Focus; không bảo đảm phát khi app đã hết hạn. Lịch đặt theo từng lô, bổ sung khi mở app.").font(.footnote).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Gia hạn Sendeli").navigationBarTitleDisplayMode(.inline)
+        }.sendeliNavigationTitle("Gia hạn Sendeli").navigationBarTitleDisplayMode(.inline)
             .task { await renewal.refresh(); if let value = renewal.expiry { manual = value } }
     }
 }

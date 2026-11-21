@@ -59,7 +59,7 @@ struct AllDeliveryOrdersView: View {
                 NavigationLink { OrderDetailView(id: order.id) } label: { SendeliOrderRow(order: order) }.buttonStyle(.plain)
                     .accessibilityIdentifier("order.\(order.code)")
             }
-        }.navigationTitle("Tất cả đơn hàng")
+        }.sendeliNavigationTitle("Tất cả đơn hàng")
     }
 }
 struct SendeliOrderRow: View {
@@ -100,7 +100,7 @@ struct DeliveryWorkView: View {
                     ForEach(sales) { item in Button { payment = item } label: { row(item) }.buttonStyle(.borderless).accessibilityIdentifier("work.freight.\(item.orderID?.uuidString ?? item.id)") }
                 } }
             }
-        }.navigationTitle("Việc cần chốt")
+        }.sendeliNavigationTitle("Việc cần chốt")
             .sheet(item: $payment) { item in if let id = item.orderID { CustomerTransferConfirmationView(id: id) } }
     }
     private func row(_ item: DeliveryWorkItem) -> some View {

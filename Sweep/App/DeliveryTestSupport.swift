@@ -1,5 +1,6 @@
 #if DEBUG
 import UIKit
+import AppIntents
 
 extension DeliveryStore {
     func installUpdate02UITestFixture() {
@@ -76,6 +77,16 @@ extension DeliveryStore {
         try Data().write(to: marker)
         do {
             let source = try billUITestResult().candidates[0].image
+            if ProcessInfo.processInfo.arguments.contains("--shortcut-file") || ProcessInfo.processInfo.arguments.contains("--shortcut-bytes") {
+                var intent = ReceiveSweepInvoice()
+                if ProcessInfo.processInfo.arguments.contains("--shortcut-file") {
+                    intent.image = IntentFile(fileURL: source)
+                } else {
+                    intent.image = IntentFile(data: try Data(contentsOf: source), filename: "phieu.png", type: .png)
+                }
+                _ = try await intent.perform()
+                return
+            }
             guard let image = UIImage(contentsOfFile: source.path) else { throw DeliveryError.invalid("Không mở được ảnh mẫu UI.") }
             let received = try await SharedInvoiceLoader.load(from: NSItemProvider(item: image, typeIdentifier: "public.image"))
             defer { try? FileManager.default.removeItem(at: received) }

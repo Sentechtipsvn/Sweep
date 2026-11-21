@@ -42,7 +42,7 @@ struct PayrollView: View {
                        configure: { configure = true }, advance: { advance = true },
                        close: { confirmation = .close }, reopen: { reason = ""; confirmation = .reopen },
                        export: { exportCSV(data) })
-            .navigationTitle("Chấm công & lương").navigationBarTitleDisplayMode(.inline)
+            .sendeliNavigationTitle("Chấm công & lương").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { configure = true } label: { Image(systemName: "slider.horizontal.3") }
@@ -304,7 +304,7 @@ private struct AttendanceEditor: View {
             Button("Lưu công") { if store.change({ try $0.markAttendance(day, state: state, note: note) }) { dismiss() } }
                 .accessibilityIdentifier("attendance.save")
             if existing != nil { Button("Bỏ chấm ngày này", role: .destructive) { if store.change({ try $0.markAttendance(day, state: nil) }) { dismiss() } } }
-        }.navigationTitle("Chấm công").navigationBarTitleDisplayMode(.inline)
+        }.sendeliNavigationTitle("Chấm công").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .onAppear { state = existing?.state ?? .work; note = existing?.note ?? "" }
     }
@@ -365,7 +365,7 @@ private struct PayrollConfigurationView: View {
             }
             if !error.isEmpty { Text(error).foregroundStyle(.red) }
             Button("Lưu cấu hình") { persist() }.accessibilityIdentifier("payroll.saveConfiguration")
-        }.navigationTitle("Cấu hình lương").navigationBarTitleDisplayMode(.inline)
+        }.sendeliNavigationTitle("Cấu hình lương").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .onAppear {
                 guard !initialized else { return }; initialized = true
@@ -416,7 +416,7 @@ private struct SalaryAdvanceEditor: View {
                     if store.change({ ledger in try ledger.changePayroll("Ghi tạm ứng") { book in var p = book.period(month); p.advances.append(item); try book.put(p) } }) { dismiss() }
                 } catch { self.error = error.localizedDescription }
             }
-        }.navigationTitle("Tạm ứng").toolbar { CloseSheet { dismiss() } }
+        }.sendeliNavigationTitle("Tạm ứng").toolbar { CloseSheet { dismiss() } }
             .onAppear { day = DeliveryMonth.contains(Date(), in: month) ? Date() : month }
     }
 }

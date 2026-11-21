@@ -496,6 +496,7 @@ struct DeliveryLedger: Codable, Equatable {
         for place in places ?? [] {
             guard !place.customer.isEmpty, !place.address.isEmpty,
                   (place.latitude == nil) == (place.longitude == nil) else { throw DeliveryError.invalid("Vị trí thiếu dữ liệu.") }
+            if let link = place.mapLink, PlaceMapLink.url(link) == nil { throw DeliveryError.invalid("Link vị trí không hợp lệ.") }
             if let lat = place.latitude, let lon = place.longitude { guard lat.isFinite && lon.isFinite && (-90...90).contains(lat) && (-180...180).contains(lon) else { throw DeliveryError.invalid("Tọa độ không hợp lệ.") } }
         }
         for contact in contacts ?? [] {

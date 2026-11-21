@@ -47,7 +47,7 @@ struct ReconciliationView: View {
                                 else { NavigationLink("Sửa lần ghi nhầm") { HandoverCorrectionView(value: value) } }
                             }
                         }
-                    }.navigationTitle("Tiền đã nộp")
+                    }.sendeliNavigationTitle("Tiền đã nộp")
                 }
             }
             Section("Phân loại đã giao trong tháng") {
@@ -56,13 +56,13 @@ struct ReconciliationView: View {
                     NavigationLink {
                         List(orders) { order in
                             NavigationLink { OrderDetailView(id: order.id) } label: { VStack(alignment: .leading) { Text(order.displayCustomer); Text(order.workflowStatus).font(.caption).foregroundStyle(.secondary) } }
-                        }.navigationTitle(route.rawValue)
+                        }.sendeliNavigationTitle(route.rawValue)
                     } label: { LabeledContent(route.rawValue, value: "\(orders.count)") }
                 }
             }
             Section { NavigationLink("Tất cả") { AllDeliveryOrdersView() }.foregroundStyle(.blue).accessibilityIdentifier("history.all") }
         }
-        .navigationTitle("Lịch sử")
+        .sendeliNavigationTitle("Lịch sử")
         .sheet(isPresented: $handover) { HandoverView() }
         .sheet(item: $sharing) { DeliveryShareSheet(items: $0.items) }
         .onAppear { rollMonthIfNeeded() }
@@ -100,7 +100,7 @@ private struct HandoverCorrectionView: View {
             TextField("Lý do điều chỉnh", text: $reason, axis: .vertical)
             Button("Hủy bản ghi nhập nhầm…", role: .destructive) { confirm = true }.disabled(reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .navigationTitle("Điều chỉnh nộp tiền")
+        .sendeliNavigationTitle("Điều chỉnh nộp tiền")
         .alert("Hủy ghi nhận lần nộp này?", isPresented: $confirm) {
             Button("Điều chỉnh, giữ lịch sử", role: .destructive) { if store.change({ try $0.reverseHandover(value.id, reason: reason) }) { dismiss() } }
             Button("Giữ nguyên", role: .cancel) {}
@@ -123,7 +123,7 @@ struct HandoverView: View {
                 DatePicker("Thời điểm nộp", selection: $at, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                 TextField("Người nhận / xác nhận đã nộp", text: $note, axis: .vertical)
                 Button("Kiểm tra và ghi nộp tiền…") { confirm = true }.disabled(amount.isEmpty || note.isEmpty)
-            }.navigationTitle("Nộp tiền công ty").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
+            }.sendeliNavigationTitle("Nộp tiền công ty").navigationBarTitleDisplayMode(.inline).toolbar { CloseSheet { dismiss() } }
                 .alert("Xác nhận đã nộp tiền?", isPresented: $confirm) {
                     Button("Đã nộp, ghi vào sổ") {
                         do { let value = try VND.parse(amount); if store.change({ try $0.handover(value, at: at, note: note) }) { dismiss() } }

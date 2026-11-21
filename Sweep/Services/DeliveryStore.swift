@@ -227,8 +227,7 @@ extension DeliveryStore {
             let protected = documents.resolvingSymlinksInPath().standardizedFileURL.path
             guard folder != protected, !folder.hasPrefix(protected + "/"), !folder.hasPrefix(root.path) else { throw DeliveryError.invalid("Chọn iCloud Drive hoặc thư mục ngoài Sendeli để giữ bản sao.") }
             let snapshot = ledger, dir = evidenceDirectory
-            let pendingInbox = try? SharedInvoiceInbox.live()
-            let pendingScan = try (reset ? pendingInbox?.scan() : nil)
+            let pendingScan = try (reset ? SharedInvoiceInbox.appScan() : nil)
             guard pendingScan?.warnings.isEmpty != false else { throw DeliveryError.invalid("Có ảnh chờ lỗi cần kiểm tra trước khi sao lưu và đặt lại.") }
             let pending = pendingScan?.items ?? []
             let destination = backupFolder.appendingPathComponent("Sweep-before-\(reset ? "reset" : "cleanup")-\(UUID().uuidString.prefix(8)).sweepbackup")
@@ -264,10 +263,7 @@ extension DeliveryStore {
                     for file in try FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: nil) { try FileManager.default.removeItem(at: file) }
                 }
                 for file in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) where file.pathExtension == "sweepbackup" { try FileManager.default.removeItem(at: file) }
-                if let inbox = pendingInbox {
-                    // Shares published after backup began remain available; do not race an active extension.
-                    for item in pending { try inbox.remove(item) }
-                }
+                for item in pending { try SharedInvoiceInbox.removeFromApp(item) }
                 for key in ["photoLimit", "allowCloudScan"] { UserDefaults.standard.removeObject(forKey: key) }
             }
             let fm = FileManager.default

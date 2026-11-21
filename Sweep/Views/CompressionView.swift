@@ -64,7 +64,7 @@ struct CompressionView: View {
             }.padding(20).frame(maxWidth: 700).frame(maxWidth: .infinity)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Nén ảnh")
+        .sendeliNavigationTitle("Nén ảnh")
         .onChange(of: picker) { _, item in
             if let item { store.importPicker { try await item.loadTransferable(type: ImportedImage.self) } }
         }

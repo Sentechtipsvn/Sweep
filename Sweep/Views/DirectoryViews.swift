@@ -1,11 +1,15 @@
 import SwiftUI
-import MapKit
+import Combine
 import CoreLocation
 import ContactsUI
 import PhotosUI
 import Vision
 
-func openGoogleMaps(_ destination: String) {
+func openPlaceDirections(_ destination: String) {
+    if let link = PlaceMapLink.url(destination) {
+        UIApplication.shared.open(link)
+        return
+    }
     guard let native = DeliveryDirections.googleMaps(address: destination), let web = DeliveryDirections.googleMaps(address: destination, native: false) else { return }
     UIApplication.shared.open(UIApplication.shared.canOpenURL(native) ? native : web)
 }
@@ -99,7 +103,7 @@ struct ContactsView: View {
                 }
             }
             if contacts.isEmpty { Text("Chưa có liên hệ. Chọn từ Danh bạ hoặc thêm thủ công.").foregroundStyle(.secondary) }
-        }.navigationTitle("Liên hệ nhanh").searchable(text: $query, prompt: "Tên, số điện thoại")
+        }.sendeliNavigationTitle("Liên hệ nhanh").searchable(text: $query, prompt: "Tên, số điện thoại")
             .toolbar {
                 Menu {
                     Button("Chọn từ Danh bạ", systemImage: "person.crop.circle.badge.plus") { picker = true }
@@ -159,8 +163,8 @@ struct ContactEditor: View {
                     Button("Huỷ", role: .cancel) {}
                 }
             }
-        }.navigationTitle(contact == nil ? "Thêm liên hệ" : "Sửa liên hệ").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Xong") { dismiss() } } }
+        }.sendeliNavigationTitle(contact == nil ? "Thêm liên hệ" : "Sửa liên hệ").navigationBarTitleDisplayMode(.inline)
+            .toolbar { CloseSheet { dismiss() } }
             .onAppear { name = contact?.name ?? initialName; phone = contact?.phone ?? initialPhone; zalo = contact?.zalo ?? ""; aliases = contact?.aliases ?? ""; kind = contact?.role ?? role }
             .alert("Số này đã có trong Sendeli", isPresented: $confirmDuplicate) {
                 Button("Cập nhật liên hệ đã có") { persist(replacing: duplicate) }
@@ -235,41 +239,57 @@ struct PlacesView: View {
                     DirectoryHeading(title: place.customer, kind: place.kind) { editing = place }
                     HStack {
                         Text(place.address).font(.subheadline); Spacer(minLength: 4)
-                        Button { openGoogleMaps(place.destination) } label: { Image(systemName: "location.fill").frame(width: 44, height: 44) }.buttonStyle(.borderless).accessibilityLabel("Điều hướng Google Maps")
+                        Button { openPlaceDirections(place.destination) } label: { Image(systemName: "location.fill").frame(width: 44, height: 44) }.buttonStyle(.borderless).accessibilityLabel("Mở chỉ đường")
                     }
                     if !place.phone.isEmpty { HStack { Text(place.phone).font(.subheadline).textSelection(.enabled); Spacer(minLength: 4); SweepCallButton(phone: place.phone) } }
                 }.padding(.vertical, 2)
             }
             if (store.ledger.places ?? []).isEmpty { Text("Chưa lưu vị trí.").foregroundStyle(.secondary) }
-        }.navigationTitle("Vị trí").searchable(text: $query, prompt: "Khách, chành, địa chỉ")
+        }.sendeliNavigationTitle("Vị trí").searchable(text: $query, prompt: "Khách, chành, địa chỉ")
             .toolbar { NavigationLink { PlaceEditor() } label: { Image(systemName: "plus") }.accessibilityLabel("Thêm vị trí") }
-            .sheet(item: $editing) { place in NavigationStack { PlaceEditor(place: place).toolbar { ToolbarItem(placement: .cancellationAction) { Button("Xong") { editing = nil } } } } }
+            .sheet(item: $editing) { place in NavigationStack { PlaceEditor(place: place) } }
     }
 }
 @MainActor
 final class DeliveryGPS: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published var coordinate: CLLocationCoordinate2D?
+    let coordinates = PassthroughSubject<CLLocationCoordinate2D, Never>()
     @Published var problem = ""
     @Published var accuracy: Double?
     private let manager = CLLocationManager()
-    private var requested = false
+    @Published private(set) var requesting = false
     override init() { super.init(); manager.delegate = self; manager.desiredAccuracy = kCLLocationAccuracyBest }
     func request() {
-        problem = ""; requested = true
+        guard !requesting else { return }
+        problem = ""; requesting = true
         if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
-        else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted { problem = "Cho phép vị trí trong Cài đặt hoặc chọn trên bản đồ." }
-        else { manager.requestLocation() }
+        else { requestIfAuthorized() }
+    }
+    func cancel() {
+        requesting = false; manager.stopUpdatingLocation(); problem = ""; accuracy = nil
+    }
+    private func requestIfAuthorized() {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: manager.requestLocation()
+        case .denied, .restricted:
+            requesting = false; problem = "Cho phép Sendeli dùng vị trí trong Cài đặt hoặc dán link vị trí."
+        default: break
+        }
     }
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if requested && (manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways) { manager.requestLocation() }
+        if requesting { requestIfAuthorized() }
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard requesting else { return }
+        requesting = false
         guard let location = locations.last, location.horizontalAccuracy >= 0, abs(location.timestamp.timeIntervalSinceNow) < 60 else {
-            problem = "Chưa nhận được vị trí mới. Sếp thử lại hoặc chọn trên bản đồ."; return
+            problem = "Chưa lấy được vị trí mới. Sếp thử lại hoặc dán link vị trí."; return
         }
-        accuracy = location.horizontalAccuracy; coordinate = location.coordinate
+        accuracy = location.horizontalAccuracy; coordinates.send(location.coordinate)
     }
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { problem = error.localizedDescription }
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard requesting else { return }
+        requesting = false; problem = error.localizedDescription
+    }
 }
 struct PlaceEditor: View {
     var place: DeliveryPlace? = nil
@@ -281,10 +301,9 @@ struct PlaceEditor: View {
     @State private var phone = ""
     @State private var address = ""
     @State private var kind = "Khách hàng"
-    @State private var lat = ""
-    @State private var lon = ""
+    @State private var coordinate: CLLocationCoordinate2D?
+    @State private var mapLink = ""
     @State private var initialized = false
-    @State private var map = false
     @State private var remove = false
     var body: some View {
         Form {
@@ -295,41 +314,47 @@ struct PlaceEditor: View {
                 Picker("Loại", selection: $kind) { Text("Khách hàng").tag("Khách hàng"); Text("Chành xe").tag("Chành xe") }
             }
             Section("Vị trí chính xác · tuỳ chọn") {
-                Button("Lấy vị trí hiện tại") { gps.request() }
-                Button("Chọn trên bản đồ") { map = true }
+                Button(gps.requesting ? "Đang lấy vị trí…" : "Lấy vị trí hiện tại") { gps.request() }
+                    .disabled(gps.requesting)
+                TextField("Dán link vị trí", text: Binding(get: { mapLink }, set: { value in
+                    gps.cancel()
+                    coordinate = nil
+                    mapLink = value
+                }))
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .keyboardType(.URL).submitLabel(.done).accessibilityIdentifier("place.link")
                 if !gps.problem.isEmpty { Text(gps.problem).font(.caption).foregroundStyle(.red) }
-                if let accuracy = gps.accuracy { Text("Độ chính xác GPS khoảng \(Int(accuracy.rounded())) m. Kiểm tra lại điểm trước khi lưu.").font(.caption).foregroundStyle(.secondary) }
-                TextField("Vĩ độ", text: $lat).keyboardType(.numbersAndPunctuation)
-                TextField("Kinh độ", text: $lon).keyboardType(.numbersAndPunctuation)
+                if let accuracy = gps.accuracy { Text("Đã lấy vị trí · sai số khoảng \(Int(accuracy.rounded())) m").font(.caption).foregroundStyle(.secondary) }
             }
-            Button("Lưu vị trí") { save() }.buttonStyle(SweepPill())
+            Button("Lưu vị trí") { save() }.buttonStyle(SweepPill()).disabled(gps.requesting)
             if let place { Button("Xoá vị trí", role: .destructive) { remove = true }
                 .alert("Xoá vị trí đã lưu?", isPresented: $remove) {
                     Button("Xoá", role: .destructive) { if store.change({ $0.places?.removeAll { $0.id == place.id } }) { dismiss() } }
                     Button("Huỷ", role: .cancel) {}
                 }
             }
-        }.navigationTitle("Lưu vị trí").navigationBarTitleDisplayMode(.inline)
+        }.sendeliNavigationTitle("Lưu vị trí").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
             .onAppear {
                 guard !initialized else { return }; initialized = true
                 customer = place?.customer ?? order?.customer ?? ""; phone = place?.phone ?? order?.phone ?? ""; address = place?.address ?? order?.address ?? ""
                 kind = place?.kind ?? (order?.settlement?.route == .freight ? "Chành xe" : "Khách hàng")
                 if kind == "Chành xe", place == nil { customer = ""; address = ""; phone = "" }
-                lat = place?.latitude.map { String($0) } ?? ""; lon = place?.longitude.map { String($0) } ?? ""
-            }
-            .onReceive(gps.$coordinate.compactMap { $0 }) { c in lat = String(c.latitude); lon = String(c.longitude) }
-            .sheet(isPresented: $map) {
-                PlaceMapPicker(initial: MapPin.read(lat + "," + lon).map {
-                    CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
-                }, address: address.isEmpty ? customer : address) { point in
-                    lat = String(point.latitude); lon = String(point.longitude)
+                mapLink = place?.editableMapLink ?? ""
+                if place?.mapLink == nil, let latitude = place?.latitude, let longitude = place?.longitude {
+                    coordinate = .init(latitude: latitude, longitude: longitude)
                 }
+            }
+            .onReceive(gps.coordinates) { point in
+                coordinate = point
+                mapLink = PlaceMapLink.gpsLink(latitude: point.latitude, longitude: point.longitude)
             }
     }
     private func save() {
-        if (!lat.isEmpty && Double(lat) == nil) || (!lon.isEmpty && Double(lon) == nil) { store.message = "Tọa độ phải là số, dùng dấu chấm thập phân."; return }
-        let value = DeliveryPlace(id: place?.id ?? UUID(), customer: customer, phone: phone, address: address, kind: kind, latitude: Double(lat), longitude: Double(lon))
+        let text = mapLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = DeliveryPlace(id: place?.id ?? UUID(), customer: customer, phone: phone, address: address, kind: kind,
+                                  latitude: coordinate?.latitude, longitude: coordinate?.longitude,
+                                  mapLink: coordinate == nil && !text.isEmpty ? text : nil)
         if store.change({ ledger in
             try ledger.savePlace(value)
             if let order, order.settlement?.route == .freight, kind == "Chành xe",
