@@ -164,8 +164,13 @@ struct DeliveryOrder: Codable, Identifiable, Equatable {
     var reportDrafts: [DeliveryReportDraft] = []
     var reportAcks: [ReportAcknowledgement] = []
     var voidReason: String?
-    var displayCustomer: String {
+    var displayCustomer: String { Self.shopName(customer) }
+    static func shopName(_ customer: String) -> String {
         var name = customer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let legal = name.range(of: #"[(]\s*(?:HKD|HỘ KINH DOANH)\b[^()]*$"#, options: [.regularExpression, .caseInsensitive]) {
+            let prefix = name[..<legal.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !prefix.isEmpty { name = prefix }
+        }
         while name.last == ")" {
             var depth = 0
             var opening: String.Index?
@@ -462,6 +467,13 @@ struct DeliveryLedger: Codable, Equatable {
         guard !handoverReversals.contains(where: { $0.handoverID == id }) else { return }
         handoverReversals.append(HandoverReversal(handoverID: id, reason: reason))
         record("Hủy ghi nhầm lần nộp tiền", "\(id) · \(reason)")
+    }
+    mutating func cancelMistakenOrder(_ id: UUID) throws {
+        guard let order = orders.first(where: { $0.id == id }), order.reportAcks.isEmpty,
+              order.cash == 0, order.bank == 0, (order.customerTransfers ?? []).isEmpty else {
+            throw DeliveryError.invalid("Mở chi tiết để kiểm tra khoản thu hoặc báo cáo đã gửi.")
+        }
+        try void(id, reason: "Nhập nhầm đơn")
     }
     mutating func void(_ id: UUID, reason: String) throws {
         guard let i = orders.firstIndex(where: { $0.id == id }), !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeliveryError.invalid("Nhập lý do hủy hồ sơ.") }

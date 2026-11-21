@@ -8,6 +8,21 @@ final class SweepUITests: XCTestCase {
             return false
         }
     }
+    func testWrongOrderSwipeShowsFeeAndCancels() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--delivery-ui-testing", "--reset-delivery", "--seed-delivery"]
+        app.launch()
+        let row = app.buttons["order.TEST-001"]
+        XCTAssertTrue(row.waitForExistence(timeout: 12))
+        row.swipeLeft()
+        app.buttons["Hủy nhập nhầm"].tap()
+        let alert = app.alerts["Hủy đơn nhập nhầm?"]
+        XCTAssertTrue(alert.exists)
+        alert.buttons["Hủy nhập nhầm"].tap()
+        waitUntil(row, in: app) { !$0.exists }
+    }
+
     func testPlaceEditorAcceptsMapLinkAndBackupAllowsPlacesAlone() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

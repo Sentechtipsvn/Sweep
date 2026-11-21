@@ -56,7 +56,12 @@ struct SharedInboxView: View {
             .toolbar { CloseSheet { dismiss() } }
             .refreshable { await inbox.reload() }
             .sheet(item: $selected, onDismiss: { if let id = imported { imported = nil; saved(id) } }) { item in
-                OrderIntakeView(shared: item) { id in
+                OrderIntakeView(shared: item, discardShared: {
+                    if await inbox.remove(item) {
+                        selected = nil
+                        if inbox.items.isEmpty { dismiss() }
+                    } else { store.message = inbox.problem }
+                }) { id in
                     Task {
                         // The ledger commit must precede removing the queue item. sourceID makes a retry idempotent.
                         if !(await inbox.remove(item)) { store.message = "Đơn đã lưu, nhưng ảnh chờ chưa dọn được. Nhập lại sẽ mở đúng hồ sơ cũ. " + inbox.problem }

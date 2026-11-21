@@ -17,6 +17,7 @@ struct OrdersView: View {
     @State private var showWork = false
     @State private var newOrder = false
     @State private var savedOrder: UUID?
+    @State private var mistaken: DeliveryOrder?
     private func visible(_ now: Date) -> [DeliveryOrder] {
         store.ledger.orders.filter { order in
             let matches = query.isEmpty || (order.customer + " " + order.code + " " + order.phone).localizedStandardContains(query)
@@ -63,11 +64,26 @@ struct OrdersView: View {
                     }
                     ForEach(orders) { order in
                         NavigationLink(value: order.id) { SendeliOrderRow(order: order) }.buttonStyle(.plain).accessibilityIdentifier("order.\(order.code)")
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if filter == "Đang giao" {
+                                    Button("Hủy nhập nhầm", role: .destructive) { mistaken = order }
+                                }
+                            }
                     }
                 }
                 .safeAreaInset(edge: .bottom) {
                     if filter == "Đã giao" { Text("\(orders.count) đơn").font(.system(size: 16)).frame(maxWidth: .infinity).padding(.vertical, 7).background(.bar).accessibilityIdentifier("orders.count") }
                 }
+            }
+            .alert("Hủy đơn nhập nhầm?", isPresented: Binding(get: { mistaken != nil }, set: { if !$0 { mistaken = nil } }), presenting: mistaken) { order in
+                if order.cash == 0 && order.bank == 0 && order.reportAcks.isEmpty && (order.customerTransfers ?? []).isEmpty {
+                    Button("Hủy nhập nhầm", role: .destructive) { _ = store.change { try $0.cancelMistakenOrder(order.id) } }
+                } else {
+                    Button("Kiểm tra chi tiết") { path.append(order.id) }
+                }
+                Button("Giữ đơn", role: .cancel) {}
+            } message: { order in
+                Text("\(order.code) · \(order.displayCustomer)\nCông đã ghi: \(VND.format(order.activeAssignments.reduce(0) { $0 + $1.fee })).")
             }
             .sendeliNavigationTitle("Đơn hàng")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { newOrder = true } label: { Label("Nhận đơn", systemImage: "plus") }.accessibilityIdentifier("orders.new").disabled(store.busy || store.blocked) } }
@@ -111,6 +127,7 @@ struct OrdersView: View {
 struct OrderIntakeView: View {
     var candidate: BillCandidate? = nil
     var shared: SharedInvoiceInbox.Item? = nil
+    var discardShared: (() async -> Void)? = nil
     let saved: (UUID) -> Void
     @EnvironmentObject private var store: DeliveryStore
     @Environment(\.dismiss) private var dismiss
@@ -136,16 +153,45 @@ struct OrderIntakeView: View {
     @State private var allowRepeatedImage = false
     @State private var sourceAsset: String?
     @State private var image: ImportedImage?
-    @State private var preview: URL?
-    private var source: URL? { image?.url ?? shared?.image ?? candidate?.image }
+    @State private var sourceRemoved = false
+    @State private var pendingImage: ImportedImage?
+    @State private var pendingAsset: String?
+    @State private var confirmReplacement = false
+    @State private var confirmDiscard = false
+    private var source: URL? { sourceRemoved ? nil : image?.url ?? shared?.image ?? candidate?.image }
+    private func resetFields() {
+        readingRequest = UUID(); reading = false; readingStatus = ""; validation = ""; duplicateID = nil
+        customer = ""; code = ""; phone = ""; address = ""; total = ""; salesperson = ""; deliveryNote = ""
+        hasInvoiceDate = false; invoiceDate = Date(); allowRepeatedImage = false
+    }
+    private func usePending() {
+        if source != nil || sourceRemoved { signed = false; signedAt = Date() }
+        resetFields(); image = pendingImage; sourceAsset = pendingAsset; sourceRemoved = false
+        pendingImage = nil; pendingAsset = nil
+    }
+    private func choose(_ url: URL, asset: String?) async {
+        do {
+            pendingImage = try await Task.detached { try ImportedImage.copy(from: url) }.value
+            pendingAsset = asset
+            if [code, customer, total, phone, address, deliveryNote].contains(where: { !$0.isEmpty }) || hasInvoiceDate {
+                confirmReplacement = true
+            } else { usePending() }
+        } catch { store.message = error.localizedDescription }
+    }
     var body: some View {
         NavigationStack {
             Form {
                 Section("Phiếu nội bộ có tiền") {
-                    if let source { Button { preview = source } label: { EvidenceThumbnail(url: source, height: 220) }.buttonStyle(.plain) }
-                    EvidencePicker(title: "Ảnh phiếu") { url, asset in
-                        do { image = try await Task.detached { try ImportedImage.copy(from: url) }.value; sourceAsset = asset }
-                        catch { store.message = error.localizedDescription }
+                    if let source {
+                        EditablePhoto(url: source, height: 220, title: [code, customer, "Ảnh phiếu"].filter { !$0.isEmpty }.joined(separator: " · ")) { url, asset in
+                            await choose(url, asset: asset)
+                        } remove: {
+                            resetFields(); sourceRemoved = true; image = nil; sourceAsset = nil
+                        }
+                    }
+                    EvidencePicker(title: "Ảnh phiếu") { url, asset in await choose(url, asset: asset) }
+                    if discardShared != nil {
+                        Button("Bỏ phiếu này", role: .destructive) { confirmDiscard = true }
                     }
                     if reading { ProgressView("Đang đọc thông tin trên phiếu…") }
                     if !readingStatus.isEmpty { Text(readingStatus).font(.caption).foregroundStyle(.secondary) }
@@ -171,7 +217,7 @@ struct OrderIntakeView: View {
                     LabeledContent("Công mỗi phiếu", value: VND.format(store.ledger.settings.fee))
                     Toggle("Đây là phiếu khác hợp lệ dù dùng lại ảnh", isOn: $allowRepeatedImage).font(.caption)
                 }
-                if let candidate {
+                if let candidate, image == nil, !sourceRemoved {
                     Section("Xem trước dữ liệu Bill") {
                         if let date = candidate.createdAt { LabeledContent("Ngày lưu bên Bill", value: date.formatted(date: .numeric, time: .shortened)) }
                         LabeledContent("Tiền mặt giữ lại", value: VND.format(candidate.cash))
@@ -188,12 +234,19 @@ struct OrderIntakeView: View {
             }
             .sendeliNavigationTitle("Nhận đơn").navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseSheet { dismiss() } }
-            .quickLookPreview($preview)
+            .alert("Đọc lại hồ sơ từ ảnh mới?", isPresented: $confirmReplacement) {
+                Button("Đổi ảnh và đọc lại") { usePending() }
+                Button("Giữ phiếu hiện tại", role: .cancel) { pendingImage = nil; pendingAsset = nil }
+            } message: { Text("Mã phiếu, tên khách, số tiền và các thông tin đã nhập sẽ được điền lại từ ảnh mới.") }
+            .alert("Bỏ phiếu này khỏi hàng chờ?", isPresented: $confirmDiscard) {
+                Button("Bỏ phiếu", role: .destructive) { Task { await discardShared?() } }
+                Button("Giữ phiếu", role: .cancel) {}
+            }
             .onAppear {
                 guard !initialized else { return }; initialized = true
                 if let at = shared?.signedAt { signed = true; signedAt = at }
                 if let candidate {
-                    customer = candidate.customer; total = String(candidate.total); code = candidate.code
+                    customer = DeliveryOrder.shopName(candidate.customer); total = String(candidate.total); code = candidate.code
                     phone = candidate.phone; address = candidate.address; deliveryNote = candidate.deliveryNote
                     if let date = candidate.invoiceDate { invoiceDate = date; hasInvoiceDate = true }
                 }
@@ -204,6 +257,7 @@ struct OrderIntakeView: View {
             }.frame(width: 0, height: 0))
             .alert("Đơn này bạn đã ký chưa?", isPresented: $askSigned) {
                 Button("Đã ký") { signed = true }
+                if discardShared != nil { Button("Bỏ phiếu này", role: .destructive) { Task { await discardShared?() } } }
                 Button("Bỏ qua", role: .cancel) { dismiss() }
             }
             .task(id: source) { if let source { await readInvoice(source) } }
@@ -231,7 +285,7 @@ struct OrderIntakeView: View {
             guard !Task.isCancelled, source == url, readingRequest == request else { return }
             if salesperson.isEmpty { salesperson = fields.salesperson }
             if code.isEmpty { code = fields.code }
-            if customer.isEmpty { customer = fields.customer }
+            if customer.isEmpty { customer = DeliveryOrder.shopName(fields.customer) }
             if total.isEmpty || (candidate == nil && total == "0") { if let value = fields.total { total = String(value) } }
             if phone.isEmpty { phone = fields.phone }
             if address.isEmpty { address = fields.address }
@@ -255,16 +309,16 @@ struct OrderIntakeView: View {
         do {
             var order = DeliveryOrder(code: code.trimmingCharacters(in: .whitespacesAndNewlines), customer: customer.trimmingCharacters(in: .whitespacesAndNewlines), total: try VND.parse(total))
             if let shared {
-                if let old = store.ledger.orders.first(where: { $0.sourceID == shared.sourceID }) { saved(old.id); return }
+                if image == nil, let old = store.ledger.orders.first(where: { $0.sourceID == shared.sourceID }) { saved(old.id); return }
                 if let old = store.ledger.orders.first(where: { DeliveryOrder.normalizedCode($0.code) == DeliveryOrder.normalizedCode(order.code) }) {
                     duplicateID = old.id; validation = "Mã \(old.code) đã có: \(old.customer), \(VND.format(old.total)). Ảnh chờ vẫn được giữ. Kiểm tra lại mã hoặc xác nhận đây là đơn cũ."; return
                 }
-                try await Task.detached { try EvidenceFiles.verify(shared.evidence, directory: shared.directory) }.value
+                if image == nil { try await Task.detached { try EvidenceFiles.verify(shared.evidence, directory: shared.directory) }.value }
                 order.sourceID = shared.sourceID; order.sourceCreatedAt = shared.receivedAt
             }
             order.salesperson = salesperson; order.phone = phone; order.address = address; order.invoiceAt = hasInvoiceDate ? invoiceDate : nil
             order.note = InvoiceParser.cleanStoredNote(deliveryNote)
-            if let candidate {
+            if let candidate, image == nil {
                 guard order.total >= candidate.cash + candidate.bank else { throw DeliveryError.invalid("Tổng sửa thấp hơn khoản thu cũ. Kiểm tra sổ trước khi nhập.") }
                 order.sourceID = candidate.id; order.sourceCreatedAt = candidate.createdAt; order.sourceSnapshot = candidate.sourceSnapshot
                 order.reviewNote = candidate.isLegacy ? candidate.note : ""

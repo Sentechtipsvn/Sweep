@@ -13,6 +13,19 @@ final class FieldUpdateTests: XCTestCase {
         order.customer = "Tiệm (HKD (A)) (B)"
         XCTAssertEqual(order.displayCustomer, "Tiệm")
     }
+    func testShopNameForIntakeAndQuickCancellation() throws {
+        XCTAssertEqual(DeliveryOrder.shopName("Tiệm A ( HKD Nguyễn An"), "Tiệm A")
+        XCTAssertEqual(DeliveryOrder.shopName("Tiệm A (CN 2) Q1"), "Tiệm A (CN 2) Q1")
+        var ledger = DeliveryLedger()
+        var order = DeliveryOrder(code: "QA-1", customer: "Tiệm", total: 10000)
+        order.evidence = [DeliveryEvidence(role: .invoice, filename: UUID().uuidString + ".jpg", sha256: String(repeating: "a", count: 64), bytes: 4)]
+        let id = try ledger.insert(order)
+        try ledger.sign(id, at: Date())
+        try ledger.cancelMistakenOrder(id)
+        try ledger.cancelMistakenOrder(id)
+        XCTAssertEqual(ledger.orders.first?.reversals.count, 1)
+        XCTAssertEqual(ledger.orders.first?.voidReason, "Nhập nhầm đơn")
+    }
     func testOnlyCompletedZaloActivityQualifiesForCleanup() {
         let zalo = "vn.com.vng.zingalo.Share"
         XCTAssertTrue(ReportShareResult.sentToZalo(activity: zalo, completed: true, failed: false))

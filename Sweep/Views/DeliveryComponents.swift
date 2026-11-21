@@ -82,15 +82,7 @@ struct EvidencePicker: View {
             Task {
                 loading = true; defer { loading = false; selection = nil }
                 do {
-                    var ready: URL?
-                    if let data = try? await item.loadTransferable(type: Data.self) {
-                        ready = try? await Task.detached { try IncomingInvoiceImage.copy(data: data) }.value
-                    }
-                    if ready == nil, let image = try await item.loadTransferable(type: ImportedImage.self) {
-                        ready = try await Task.detached { try IncomingInvoiceImage.copy(from: image.url) }.value
-                        withExtendedLifetime(image) {}
-                    }
-                    guard let ready else { throw DeliveryError.invalid("Chưa tải được ảnh. Mở ảnh trong thư viện rồi chọn lại.") }
+                    let ready = try await loadEvidencePhoto(item)
                     defer { try? FileManager.default.removeItem(at: ready) }
                     await onChoose(ready, item.itemIdentifier)
                 } catch { store.message = error.localizedDescription }
@@ -229,4 +221,79 @@ private struct BackTitleInstaller: UIViewControllerRepresentable {
     }
     func makeUIViewController(context: Context) -> Controller { Controller() }
     func updateUIViewController(_ controller: Controller, context: Context) { controller.install() }
+}
+
+
+private func loadEvidencePhoto(_ item: PhotosPickerItem) async throws -> URL {
+    var ready: URL?
+    if let data = try? await item.loadTransferable(type: Data.self) {
+        ready = try? await Task.detached { try IncomingInvoiceImage.copy(data: data) }.value
+    }
+    if ready == nil, let image = try await item.loadTransferable(type: ImportedImage.self) {
+        ready = try await Task.detached { try IncomingInvoiceImage.copy(from: image.url) }.value
+        withExtendedLifetime(image) {}
+    }
+    guard let ready else { throw DeliveryError.invalid("Chưa tải được ảnh. Mở ảnh trong thư viện rồi chọn lại.") }
+    return ready
+}
+
+struct EditablePhoto: View {
+    let url: URL
+    let height: CGFloat
+    let title: String
+    var editable = true
+    let replace: (URL, String?) async -> Void
+    let remove: () -> Void
+    @EnvironmentObject private var store: DeliveryStore
+    @State private var picker = false
+    @State private var choice: PhotosPickerItem?
+    @State private var preview = false
+    @State private var removing = false
+    var body: some View {
+        Button { preview = true } label: { EvidenceThumbnail(url: url, height: height) }
+            .buttonStyle(.plain)
+            .contextMenu {
+                if editable {
+                    Button("Đổi ảnh") { picker = true }
+                    Button("Xoá khỏi đơn", role: .destructive) { removing = true }
+                }
+            }
+            .alert("Xoá ảnh khỏi đơn?", isPresented: $removing) {
+                Button("Xoá khỏi đơn", role: .destructive, action: remove)
+                Button("Giữ ảnh", role: .cancel) {}
+            } message: { Text(title) }
+            .photosPicker(isPresented: $picker, selection: $choice, matching: .images, preferredItemEncoding: .compatible, photoLibrary: .shared())
+            .onChange(of: choice) { _, item in
+                guard let item else { return }
+                Task {
+                    defer { choice = nil }
+                    do {
+                        let ready = try await loadEvidencePhoto(item)
+                        defer { try? FileManager.default.removeItem(at: ready) }
+                        await replace(ready, item.itemIdentifier)
+                    } catch { store.message = error.localizedDescription }
+                }
+            }
+            .sheet(isPresented: $preview) {
+                NavigationStack {
+                    GeometryReader { geometry in EvidenceThumbnail(url: url, height: geometry.size.height) }
+                        .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+                        .toolbar { CloseSheet { preview = false } }
+                }
+            }
+    }
+}
+
+struct OrderPhoto: View {
+    let order: DeliveryOrder
+    let file: DeliveryEvidence
+    let height: CGFloat
+    @EnvironmentObject private var store: DeliveryStore
+    var body: some View {
+        EditablePhoto(url: store.url(file), height: height, title: [order.code, order.displayCustomer, file.role.rawValue].joined(separator: " · "), editable: order.voidReason == nil) { url, asset in
+            await store.attach(url, role: file.role, to: order.id, asset: asset, replacing: file.id)
+        } remove: {
+            _ = store.change { try $0.excludeEvidence(file.id, orderID: order.id, reason: "Chọn nhầm ảnh") }
+        }
+    }
 }

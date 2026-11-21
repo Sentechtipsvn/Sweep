@@ -47,7 +47,7 @@ struct DeliveryFlowView: View {
                             }
                             ForEach(order.requiredReportRoles, id: \.self) { role in
                                 SweepCard(title: role.rawValue) {
-                                    ForEach(order.activeEvidence.filter { $0.role == role }) { file in EvidenceThumbnail(url: store.url(file), height: 150) }
+                                    ForEach(order.activeEvidence.filter { $0.role == role }) { file in OrderPhoto(order: order, file: file, height: 150) }
                                     EvidencePicker(title: role == .invoice ? "Phiếu có số tiền" : role.rawValue) { url, asset in await store.attach(url, role: role, to: id, asset: asset) }
                                 }
                             }

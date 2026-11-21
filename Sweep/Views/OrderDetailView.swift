@@ -16,8 +16,6 @@ struct OrderDetailView: View {
     @State private var void = false
     @State private var bank = false
     @State private var reason = ""
-    @State private var excluding = false
-    @State private var excludedFile: UUID?
     private var order: DeliveryOrder? { store.order(id) }
     var body: some View {
         Group {
@@ -33,7 +31,7 @@ struct OrderDetailView: View {
                         }
                         SweepCard {
                             if let invoice = order.activeEvidence.first(where: { $0.role == .invoice }) {
-                                Button { preview = store.url(invoice) } label: { EvidenceThumbnail(url: store.url(invoice), height: 230) }.buttonStyle(.plain)
+                                OrderPhoto(order: order, file: invoice, height: 230)
                                     .overlay(alignment: .topTrailing) {
                                         Menu {
                                             let matches = (store.ledger.contacts ?? []).filter { $0.matches(order.salesperson ?? "") }
@@ -96,10 +94,7 @@ struct OrderDetailView: View {
                                     ScrollView(.horizontal) {
                                         HStack {
                                             ForEach(files) { file in
-                                                Button { preview = store.url(file) } label: { EvidenceThumbnail(url: store.url(file), height: 100).frame(width: 100) }.buttonStyle(.plain)
-                                                    .contextMenu {
-                                                        Button("Loại khỏi bộ báo cáo…", role: .destructive) { excludedFile = file.id; reason = ""; excluding = true }
-                                                    }
+                                                OrderPhoto(order: order, file: file, height: 100).frame(width: 100)
                                                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                                             }
                                         }.animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: files.map(\.id))
@@ -162,11 +157,6 @@ struct OrderDetailView: View {
                     Button("Hủy hồ sơ", role: .destructive) { _ = store.change { try $0.void(id, reason: reason) } }
                     Button("Giữ hồ sơ", role: .cancel) {}
                 } message: { Text("Giữ lịch sử và chứng từ; điều chỉnh công đã ghi. Hồ sơ có khoản thu phải được rà soát tiền trước.") }
-                .alert("Loại ảnh khỏi bộ báo cáo?", isPresented: $excluding) {
-                    TextField("Lý do / ảnh bổ sung thay thế", text: $reason)
-                    Button("Loại khỏi báo cáo", role: .destructive) { if let excludedFile { _ = store.change { try $0.excludeEvidence(excludedFile, orderID: id, reason: reason) } } }
-                    Button("Giữ ảnh", role: .cancel) {}
-                } message: { Text("Giữ ảnh gốc và lịch sử. Bộ báo cáo mới sẽ bỏ ảnh này; Sếp thêm ảnh đúng nếu đó là chứng từ bắt buộc.") }
             } else { ContentUnavailableView("Không tìm thấy hồ sơ", systemImage: "doc.questionmark") }
         }
         .sendeliNavigationTitle("Chi tiết đơn").navigationBarTitleDisplayMode(.inline)
@@ -400,7 +390,7 @@ struct OrderReportView: View {
                     ForEach(selectedIDs, id: \.self) { fileID in
                         if let file = order.orderedEvidence.first(where: { $0.id == fileID }) {
                             HStack(spacing: 12) {
-                                Button { preview = store.url(file) } label: { EvidenceThumbnail(url: store.url(file), height: 75).frame(width: 95) }.buttonStyle(.plain)
+                                OrderPhoto(order: order, file: file, height: 75).frame(width: 95)
                                 Text(file.role.rawValue).font(.subheadline)
                                 Spacer(minLength: 0)
                                 Button {
@@ -457,17 +447,19 @@ struct OrderReportView: View {
                 List {
                     if let order = store.order(id) {
                         ForEach(order.shareableEvidence) { file in
-                            Button {
-                                if selectedIDs.contains(file.id) { selectedIDs.removeAll { $0 == file.id } }
-                                else { selectedIDs.append(file.id) }
-                            } label: {
-                                HStack {
-                                    EvidenceThumbnail(url: store.url(file), height: 75).frame(width: 100)
-                                    Text(file.role.rawValue)
-                                    Spacer()
-                                    Image(systemName: selectedIDs.contains(file.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(.green)
-                                }
-                            }.buttonStyle(.plain).accessibilityIdentifier("report.select.\(file.role.rawValue)")
+                            HStack {
+                                OrderPhoto(order: order, file: file, height: 75).frame(width: 100)
+                                Button {
+                                    if selectedIDs.contains(file.id) { selectedIDs.removeAll { $0 == file.id } }
+                                    else { selectedIDs.append(file.id) }
+                                } label: {
+                                    HStack {
+                                        Text(file.role.rawValue)
+                                        Spacer()
+                                        Image(systemName: selectedIDs.contains(file.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(.green)
+                                    }
+                                }.buttonStyle(.borderless).accessibilityIdentifier("report.select.\(file.role.rawValue)")
+                            }
                         }
                     }
                 }.sendeliNavigationTitle("Chọn ảnh gửi").navigationBarTitleDisplayMode(.inline)

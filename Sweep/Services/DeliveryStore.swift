@@ -128,7 +128,7 @@ final class DeliveryStore: ObservableObject {
             message = error.localizedDescription; return nil
         }
     }
-    func attach(_ image: URL, role: EvidenceRole, to id: UUID?, asset: String? = nil) async {
+    func attach(_ image: URL, role: EvidenceRole, to id: UUID?, asset: String? = nil, replacing oldID: UUID? = nil) async {
         guard !busy, !blocked else { return }
         busy = true; defer { busy = false }
         var file: DeliveryEvidence?
@@ -139,7 +139,14 @@ final class DeliveryStore: ObservableObject {
             var next = ledger
             if let id {
                 guard let i = next.orders.firstIndex(where: { $0.id == id }), next.orders[i].voidReason == nil else { throw DeliveryError.invalid("Hồ sơ không hợp lệ.") }
+                if let oldID {
+                    guard next.orders[i].activeEvidence.contains(where: { $0.id == oldID && $0.role == role }) else {
+                        throw DeliveryError.invalid("Ảnh đã thay đổi. Mở lại chứng từ.")
+                    }
+                    try next.excludeEvidence(oldID, orderID: id, reason: "Đổi ảnh")
+                }
                 if next.orders[i].activeEvidence.contains(where: { $0.role == role && $0.sha256 == imported.sha256 }) {
+                    if oldID != nil { throw DeliveryError.invalid("Ảnh đã có trong mục này.") }
                     try? FileManager.default.removeItem(at: url(imported)); return
                 }
                 next.orders[i].evidence.append(imported); next.orders[i].revision += 1

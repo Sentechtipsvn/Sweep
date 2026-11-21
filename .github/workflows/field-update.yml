@@ -1,4 +1,4 @@
-name: Sendeli 0.9.1 field update
+name: Sendeli 0.9.2 field update
 on:
   push:
     branches: ['test/sendeli-0.9.1-build18']
@@ -29,11 +29,11 @@ jobs:
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-device \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee device-build.log
           python3 Tools/package_ipa.py --app build-device/Build/Products/Release-iphoneos/Sweep.app \
-            --output dist/Sendeli-0.9.1-build18.ipa
+            --output dist/Sendeli-0.9.2-build19.ipa
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Sendeli-0.9.1-build18
+          name: Sendeli-0.9.2-build19
           path: dist/
           retention-days: 30
       - name: Boot iPhone 11 simulator
@@ -61,6 +61,7 @@ jobs:
             -only-testing:SweepUITests/SweepUITests/testHotfixUnsignedBankOpensAfterSigningAndQRDoesNotRecordPayment \
             -only-testing:SweepUITests/SweepUITests/testHotfixPartialCashThenTransferNowPersistsOnlyConfirmedCash \
             -only-testing:SweepUITests/SweepUITests/testShortcutAcceptsInvoiceFileAndImageData \
+            -only-testing:SweepUITests/SweepUITests/testWrongOrderSwipeShowsFeeAndCancels \
             -only-testing:SweepUITests/SweepUITests/testPlaceEditorAcceptsMapLinkAndBackupAllowsPlacesAlone \
             -only-testing:SweepUITests/SweepUITests/testReportImageSelectionAndCompactTransferCaption \
             -only-testing:SweepUITests/SweepUITests/testHotfixFreightConfirmationAndHorizontalImageButtons \
@@ -74,7 +75,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Sendeli-build18-validation
+          name: Sendeli-build19-validation
           path: |
             device-build.log
             device-ui.log
