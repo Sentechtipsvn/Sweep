@@ -67,6 +67,8 @@ struct OrdersView: View {
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if filter == "Đang giao" {
                                     Button("Hủy nhập nhầm", role: .destructive) { mistaken = order }
+                                        .buttonStyle(.automatic)
+                                        .accessibilityIdentifier("order.cancelMistake")
                                 }
                             }
                     }

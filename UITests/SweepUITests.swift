@@ -15,8 +15,12 @@ final class SweepUITests: XCTestCase {
         app.launch()
         let row = app.buttons["order.TEST-001"]
         XCTAssertTrue(row.waitForExistence(timeout: 12))
-        row.swipeLeft()
-        app.buttons["Hủy nhập nhầm"].tap()
+        let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.87, dy: 0.52))
+        let end = row.coordinate(withNormalizedOffset: CGVector(dx: 0.17, dy: 0.52))
+        start.press(forDuration: 0.08, thenDragTo: end)
+        let cancel = app.buttons["order.cancelMistake"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
         let alert = app.alerts["Hủy đơn nhập nhầm?"]
         XCTAssertTrue(alert.exists)
         alert.buttons["Hủy nhập nhầm"].tap()
